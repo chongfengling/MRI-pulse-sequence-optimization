@@ -1,1 +1,8 @@
+# Tex complie files
+*.aux
+*.log
+*.synctex.gz
+*.toc
+
+# MacOS file
 .DS_Store
