@@ -33,3 +33,39 @@ def rotation(vectors, angle, axis):
     rotated_vectors = rotation_matrix @ vectors
 
     return rotated_vectors
+
+def single_FID(vector, m0, w, w0, t1, t2, t, axis):
+    """Free Induction Decay of a single vector in a 3-D environment. See more: Bloch Equation
+
+    Parameters
+    ----------
+    vector : np.array
+        a single vector or some isochronism vectors at time t=0.
+    m0 : float
+        magnetisation of the vector
+    w : float
+        rotating frame frequency.
+    w0 : float
+        the Larmor frequency
+    t1 : float
+        T1 relaxation
+    t2 : float
+        T2 relaxation
+    t : float
+        time of FID
+    axis : string
+        axis = 'x' or 'y' or 'z'
+    """
+    # frequency difference between rotating frame and the Larmor frequency of the vector
+    delta_frequency = w0 - w
+    vector_t = np.zeros((3,1)) * 1e-10
+    # 
+    if axis == 'x': raise NotImplementedError
+    elif axis =='y': raise NotImplementedError
+    elif axis == 'z': 
+        vector_t[0] = np.exp(- t / t2) * (vector[0] * np.cos(delta_frequency * t) + vector[1] * np.sin(delta_frequency * t))
+        vector_t[1] = np.exp(- t / t2) * (vector[1] * np.cos(delta_frequency * t) - vector[0] * np.sin(delta_frequency * t))
+        vector_t[2] = vector[2] * np.exp(-t/t1) + m0 * (1 - np.exp(-t / t1))
+    else: raise ValueError('Please input an valid axis.')
+
+    return vector_t
