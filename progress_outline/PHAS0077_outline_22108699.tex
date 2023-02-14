@@ -1,8 +1,14 @@
-\documentclass[a4paper, oneside]{article}
+\documentclass{article}
 \usepackage{amsmath, amsthm, amssymb, bm, graphicx, mathrsfs, unicode-math}
 \usepackage{hyperref} % content with links
 \usepackage{bookmark, geometry}
 \usepackage{listings, xcolor, caption, fancybox}
+
+% add reference section. Must include at least one reference in the text.
+\usepackage[nottoc]{tocbibind}
+\usepackage[square,numbers]{natbib}
+\bibliographystyle{abbrvnat}
+
 \geometry{a4paper,scale=0.8}
 
 \usepackage[english]{babel} % English formatting
@@ -100,11 +106,7 @@
 \pagenumbering{arabic}
 
 \input{main.tex}
-\newpage
 
-% \input{problem_2.tex}
-% \newpage
-% \input{problem_3.tex}
-% \input{problem_4.tex}
-% \input{problem_5.tex}
+\bibliography{references}
+
 \end{document}
