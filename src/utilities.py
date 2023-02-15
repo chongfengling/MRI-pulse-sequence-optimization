@@ -39,7 +39,7 @@ def single_FID(vector, m0, w, w0, t1, t2, t, axis):
 
     Parameters
     ----------
-    vector : np.array
+    vector : np.array, shape=(3,1)
         a single vector or some isochronism vectors at time t=0.
     m0 : float
         magnetisation of the vector
@@ -69,3 +69,44 @@ def single_FID(vector, m0, w, w0, t1, t2, t, axis):
     else: raise ValueError('Please input an valid axis.')
 
     return vector_t
+
+def multiple_FID(vectors, m0, w, w0, t1, t2, t, steps, axis):
+    """Free Induction Decay of a set of vectors in a 3-D environment. See more: Bloch Equation
+
+    Parameters
+    ----------
+    vectors : np.array, shape=(3,m)
+        a set of m vectors
+    m0 : float
+        magnetisation of m vectors. Assume there are equal. ## where is this assumption?
+    w : float or np.array
+        rotating frame frequency.
+    w0 : np.array
+        Larmor frequency of m vectors
+    t1 : float
+        T1 relaxation
+    t2 : float
+        T2 relaxation
+    t : float
+        time of FID
+    steps : int
+        number of steps
+    axis : string
+        axis = 'x' or 'y' or 'z'
+
+    Returns
+    -------
+    np.array, shape=(3,steps,m)
+        vectors after FID.
+        
+    """
+    (_, num_vectors) = vectors.shape
+    delta_time = t / steps
+
+    res = np.ones((3, steps, num_vectors)) * 1e6
+    res[:, 0, :] = vectors
+
+    for i in range(steps-1):
+        for j in range(num_vectors):
+            res[:, i + 1, j] = np.squeeze(single_FID(res[:, 0, j], m0=m0, w=w, w0=w0[j], t1=t1, t2=t2, t=delta_time*(i+1), axis=axis))
+    return res
