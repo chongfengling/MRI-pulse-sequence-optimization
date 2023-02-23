@@ -1,1 +1,12 @@
+# Tex complie files
+*.aux
+*.log
+*.synctex.gz
+*.toc
+*.bbl
+*.bcf
+*.blg
+*.run.xml
+
+# MacOS file
 .DS_Store
