@@ -1,0 +1,16 @@
+\section{Introduction and Problem Statement}
+\subsection{What is the problem?}
+Magnetic resonance imaging (MRI) is a medical imaging technique that relies on the interaction between strong magnetic fields, magnetic field gradients, and radiofrequency waves to generate highly detailed images of the body based on the Bloch equations, which provide a mathematical framework for characterizing the evolution of the magnetization over time. The Bloch equations \eqref{eq:bloch} describe the magnetization $\mathbf{M}=(M_x, M_y, M_z)$ of protons in terms of time $t$, the relaxation time $T_1$, $T_2$, and the external magnetic field $\mathbf{B}$ and can be solved with an explicitly defined pulse sequence. A pulse sequence in MRI refers to a set of radiofrequency waves and magnetic field gradients and can be determined to achieve specific imaging goals. Thus, selecting an optimal pulse sequence that meets our goals within the constraints of the laboratory conditions is always a crucial aspect of MRI scanning.
+
+\begin{equation}
+    \begin{aligned}\label{eq:bloch}
+    & \frac{d M_x(t)}{d t}=\gamma(\mathbf{M}(t) \times \mathbf{B}(t))_x-\frac{M_x(t)}{T_2} \\
+    & \frac{d M_y(t)}{d t}=\gamma(\mathbf{M}(t) \times \mathbf{B}(t))_y-\frac{M_y(t)}{T_2} \\
+    & \frac{d M_z(t)}{d t}=\gamma(\mathbf{M}(t) \times \mathbf{B}(t))_z-\frac{M_z(t)-M_0}{T_1}
+    \end{aligned}
+\end{equation}
+
+\subsection{Why is this problem important?}
+Finding an appropriate or optimal pulse sequence for MRI is a challenging task due to two main reasons. Firstly, despite the Bloch equations allow us to understand the behavior of the magnetization and obtain images, the nonlinear dynamics system they described makes it difficult to utilize the extensive parameters space in designing an optimal pulse sequence to achieve our signal \citep{0438}. Secondly, in contrast to theoretical design, creating a practical pulse sequence requires consideration of hardware performance, which can vary across different devices. Achieving a consistent and accurate image requires more than simply relying on default parameters. Rather, it necessitates the development of a model that takes into account the limitations of both the theoretical and realistic constraints involved in the imaging process. 
+\\\\
+The primary aim of this project is to create a Reinforcement Learning based model to optimize MRI pulse sequence subjects to some constraints.Specifically, the task involves designing a new pulse sequence generator that is capable of producing an optimized signal compared to a typical gradient-echo sequence-based signal, while conforming to certain constraints such as the slew rate of gradient coils.
