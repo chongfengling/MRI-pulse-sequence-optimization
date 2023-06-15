@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def rotation(vectors, angle, axis):
@@ -183,3 +184,34 @@ def w_grad(w_0, G_value, gamma, pos, dim=2):
         raise NotImplementedError
 
     return w_G
+
+
+def density_pencil(z, delta_z, rho_0, plot=False):
+    """physical image profile of a 1-D pencil. see more: Fig. 9.7
+
+    Parameters
+    ----------
+    z : _type_
+        _description_
+    delta_z : _type_
+        _description_
+    rho_0 : _type_
+        _description_
+    plot : bool, optional
+        _description_, by default False
+    """
+    num_spins = int((z / delta_z) * 2 + 1)
+    eraser_points = int(num_spins / 10)
+    eraser_density = 0.5 * rho_0 * np.ones(eraser_points)
+    nib_points = int(num_spins / 4)
+    nib_density = rho_0 - rho_0 * ((np.arange(nib_points) + 1) / nib_points)
+    stick_points = int(num_spins - eraser_points - nib_points)
+    stick_density = np.ones(stick_points) * rho_0
+    pencil_density = np.concatenate((eraser_density, stick_density, nib_density))
+    if plot:
+        x_axis = np.linspace(-z, z, num_spins)
+        plt.plot(x_axis, pencil_density)
+        plt.grid(True)
+        plt.show()
+    return pencil_density
+
