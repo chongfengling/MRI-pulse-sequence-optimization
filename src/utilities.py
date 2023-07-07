@@ -211,6 +211,9 @@ def density_pencil(z, delta_z, rho_0, plot=False):
     if plot:
         x_axis = np.linspace(-z, z, num_spins)
         plt.plot(x_axis, pencil_density)
+        plt.xlabel(r'$z$')
+        plt.ylabel(r'$\rho(z)$')
+        plt.title('1D Pencil Density')
         plt.grid(True)
         plt.show()
     return pencil_density
