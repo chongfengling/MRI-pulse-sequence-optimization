@@ -218,3 +218,24 @@ def density_pencil(z, delta_z, rho_0, plot=False):
         plt.show()
     return pencil_density
 
+
+def k_space(G_values, gamma):
+    """change from time domain to k-space domain
+
+    Parameters
+    ----------
+    G_values : np.array, shape=(steps,)
+        1d gradient first
+    gamma : float
+        not gamma bar
+
+    Returns
+    -------
+    np.array, shape=(steps,)
+        _description_
+    """
+    # gamma-bar = gamma / 2pi
+    gamma_bar = gamma / (2 * np.pi)
+    return np.cumsum(G_values) * gamma_bar
+
+
