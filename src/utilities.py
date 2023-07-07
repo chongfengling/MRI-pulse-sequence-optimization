@@ -112,8 +112,8 @@ def multiple_FID(vectors, m0, w, w0, t1, t2, t, steps, axis):
     ----------
     vectors : np.array, shape=(3,m)
         a set of m vectors
-    m0 : float
-        magnetisation of m vectors. Assume there are equal. ## where is this assumption?
+    m0 : float or np.array, shape=(m,)
+        magnetisation of m vectors. If the density is not uniform, m0 is a vector.
     w : float or np.array
         rotating frame frequency.
     w0 : np.array, shape=(m,)
@@ -141,12 +141,14 @@ def multiple_FID(vectors, m0, w, w0, t1, t2, t, steps, axis):
     res = np.ones((3, steps, num_vectors)) * 1e6
     res[:, 0, :] = vectors
 
+    m0 = np.full(num_vectors, m0) if isinstance(m0, float) else m0
+
     for i in range(steps - 1):
         for j in range(num_vectors):
             res[:, i + 1, j] = np.squeeze(
                 single_FID(
                     res[:, 0, j],
-                    m0=m0,
+                    m0=m0[j],
                     w=w,
                     w0=w0[j],
                     t1=t1,
