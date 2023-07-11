@@ -221,6 +221,70 @@ def density_pencil(z, delta_z, rho_0, plot=False):
     return pencil_density
 
 
+def density_profile_umbrella(
+    A_length, delta_x, max_rho, breakpoints=[0.05, 0.15, 1], plot=False
+):
+    """generate a 1-D umbrella density profile.
+    ---    |\
+       |   | \
+        \  |  \ 
+         - |   \ 
+    Parameters
+    ----------
+    A_length : float
+        size of the umbrella
+    delta_x : float
+        length of each step
+    max_rho : float
+        maximum density
+    breakpoints : list, optional
+        where the shape changed, by default [0.05, 0.15, 1]
+    plot : bool, optional
+        plot the figure or not, by default False
+
+    Returns
+    -------
+    np.array
+        density profile over x-axis
+    """
+
+    assert len(breakpoints) == 3, 'breakpoints should be a list of length 2.'
+
+    x_axis = np.arange(0, A_length, delta_x)
+    y = np.array([])
+    # first part
+    constant_part = lambda x: 0.5 * max_rho * np.ones(len(x))
+    sub_x_axis = x_axis[x_axis <= breakpoints[0] * A_length]
+    y = np.concatenate((y, constant_part(sub_x_axis)))
+    # second part
+    quadratic_part = (
+        lambda x: 0.2 * max_rho
+        + (x - A_length * breakpoints[1]) ** 2 
+        * (0.3 * max_rho)
+        / ((breakpoints[1] - breakpoints[0]) * A_length) ** 2
+    )
+    sub_x_axis = x_axis[
+        (x_axis > breakpoints[0] * A_length) & (x_axis <= breakpoints[1] * A_length)
+    ]
+    y = np.concatenate((y, quadratic_part(sub_x_axis)))
+    # third part
+    linear_part = lambda x: (-x + A_length) * (
+        max_rho / (A_length * (1 - breakpoints[1]))
+    )
+    functions = [constant_part, quadratic_part, linear_part]
+    sub_x_axis = x_axis[x_axis > breakpoints[1] * A_length]
+    y = np.concatenate((y, linear_part(sub_x_axis)))
+
+    if plot:
+        plt.plot(x_axis, y)
+        plt.xlabel(r'$x$')
+        plt.ylabel(r'$\rho(x)$')
+        plt.title('1D Umbrella Density')
+        plt.grid(True)
+        plt.show()
+    return y
+
+
 def k_space(G_values, gamma):
     """change from time domain to k-space domain
 
@@ -239,5 +303,3 @@ def k_space(G_values, gamma):
     # gamma-bar = gamma / 2pi
     gamma_bar = gamma / (2 * np.pi)
     return np.cumsum(G_values) * gamma_bar
-
-
