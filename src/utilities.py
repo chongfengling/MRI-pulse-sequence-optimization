@@ -203,9 +203,9 @@ def density_pencil(z, delta_z, rho_0, plot=False):
         _description_, by default False
     """
     num_spins = int((z / delta_z) * 2)
-    eraser_points = int(num_spins / 10)
+    eraser_points = int(num_spins / 10000)
     eraser_density = 0.5 * rho_0 * np.ones(eraser_points)
-    nib_points = int(num_spins / 4)
+    nib_points = int(num_spins / 2)
     nib_density = rho_0 - rho_0 * ((np.arange(nib_points) + 1) / nib_points)
     stick_points = int(num_spins - eraser_points - nib_points)
     stick_density = np.ones(stick_points) * rho_0
