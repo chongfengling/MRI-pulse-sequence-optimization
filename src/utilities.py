@@ -60,7 +60,7 @@ def rotation(vectors, angle, axis):
 
 
 def single_Relaxation(vector, m0, w, w0, t1, t2, t, axis):
-    """Free Induction Decay of a single vector in a 3-D environment. See more: Bloch Equation
+    """relaxation process of a single vector in a 3-D environment. See more: Bloch Equation
 
     Parameters
     ----------
@@ -106,7 +106,7 @@ def single_Relaxation(vector, m0, w, w0, t1, t2, t, axis):
 
 
 def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
-    """Free Induction Decay of a set of vectors in a 3-D environment. See more: Bloch Equation
+    """relaxation process of a set of vectors in a 3-D environment. See more: Bloch Equation
 
     Parameters
     ----------
@@ -147,13 +147,13 @@ def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
         for j in range(num_vectors):
             res[:, i + 1, j] = np.squeeze(
                 single_Relaxation(
-                    res[:, 0, j],
+                    res[:, i, j],
                     m0=m0[j],
                     w=w,
                     w0=w0[j],
                     t1=t1,
                     t2=t2,
-                    t=delta_time * (i + 1),
+                    t=delta_time,
                     axis=axis,
                 )
             )
