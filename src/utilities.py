@@ -59,7 +59,7 @@ def rotation(vectors, angle, axis):
     return rotated_vectors
 
 
-def single_FID(vector, m0, w, w0, t1, t2, t, axis):
+def single_Relaxation(vector, m0, w, w0, t1, t2, t, axis):
     """Free Induction Decay of a single vector in a 3-D environment. See more: Bloch Equation
 
     Parameters
@@ -105,7 +105,7 @@ def single_FID(vector, m0, w, w0, t1, t2, t, axis):
     return vector_t
 
 
-def multiple_FID(vectors, m0, w, w0, t1, t2, t, steps, axis):
+def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
     """Free Induction Decay of a set of vectors in a 3-D environment. See more: Bloch Equation
 
     Parameters
@@ -146,7 +146,7 @@ def multiple_FID(vectors, m0, w, w0, t1, t2, t, steps, axis):
     for i in range(steps - 1):
         for j in range(num_vectors):
             res[:, i + 1, j] = np.squeeze(
-                single_FID(
+                single_Relaxation(
                     res[:, 0, j],
                     m0=m0[j],
                     w=w,
