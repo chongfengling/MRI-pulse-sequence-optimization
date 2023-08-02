@@ -82,7 +82,7 @@ def single_Relaxation(vector, m0, w, w0, t1, t2, t, axis):
         axis = 'x' or 'y' or 'z'
     """
     # frequency difference between rotating frame and the Larmor frequency of the vector
-    delta_frequency = w0 - w
+    delta_frequency = np.round(w0 - w, 4)
     vector_t = np.zeros((3, 1)) * 1e-10
     #
     if axis == 'x':
@@ -116,8 +116,8 @@ def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
         magnetisation of m vectors. If the density is not uniform, m0 is a vector.
     w : float or np.array
         rotating frame frequency.
-    w0 : np.array, shape=(m,)
-        Larmor frequency of m vectors
+    w0 : np.array, shape=(steps,m)
+        Larmor frequency of m vectors at each step.
     t1 : float
         T1 relaxation
     t2 : float
@@ -137,6 +137,8 @@ def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
     """
     (_, num_vectors) = vectors.shape
     delta_time = t / steps
+    assert w0.shape[0] == steps
+    assert w0.shape[1] == int(num_vectors)
 
     res = np.ones((3, steps, num_vectors)) * 1e6
     res[:, 0, :] = vectors
@@ -150,7 +152,8 @@ def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
                     res[:, i, j],
                     m0=m0[j],
                     w=w,
-                    w0=w0[j],
+                    w0=w0[i,j],
+                    # w0=w0[j],
                     t1=t1,
                     t2=t2,
                     t=delta_time,
