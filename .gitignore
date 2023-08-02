@@ -17,3 +17,7 @@
 src/rotating_vector_3d.gif
 src/ex_3.fig
 src/idft.m
+src/*.gif
+*.lof
+*.lot
+*.out
