@@ -152,7 +152,7 @@ def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
                     res[:, i, j],
                     m0=m0[j],
                     w=w,
-                    w0=w0[i,j],
+                    w0=w0[i + 1,j],
                     # w0=w0[j],
                     t1=t1,
                     t2=t2,
