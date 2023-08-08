@@ -61,13 +61,67 @@ class Env():
         self.action_space = np.random.uniform(low=self.action_low, high=self.action_high, size=7)
         
 
-    def step(self, action):
+    def step(self, action, plot = False):
         # action is an array of 7 variables (t1, t2, d1, d2, G1symbol, G2symbol, Gvalues)
         # take an action and return the next state, reward, a boolean indicating if the episode is done and additional info
         
-        def nodes2variables(action):
-            pass
-        pass
+        # calculate the gradient values
+        (t1, t2, d1, d2, G1symbol, G2symbol, Gvalue) = action
+        Gvalue = Gvalue * 1e-6
+        gamma_bar_G = self.gamma_bar * Gvalue * 1e-3
+        delta_t =  self.delta_k / gamma_bar_G
+        Ts = self.FOV_k / gamma_bar_G # ADC duration FIXED
+        t_max = 1.5 * Ts - delta_t # maximum time (ms) (rephasing process is 2 times longer than dephasingprocess)
+        t_axis = np.linspace(0, t_max, int(self.N * 1.5))
+        G_values_array = np.zeros(len(t_axis))
+        # two gradient can be overlapped
+        G_values_array[int(t1 * len(t_axis)): int(t1 * len(t_axis) + d1 * len(t_axis))] += G1symbol * Gvalue
+        G_values_array[int(t2 * len(t_axis)): int(t2 * len(t_axis) + d2 * len(t_axis))] += G2symbol * Gvalue
+        k_traj = np.cumsum(G_values_array) * 1e-3
+        if plot:
+            _, (ax1, ax2) = plt.subplots(2, sharex=True, figsize=(10, 6))
+            ax1.plot(t_axis, G_values_array)
+            ax1.set_ylabel('Gx (mT/m)')
+
+            ax2.plot(t_axis, k_traj)
+            ax2.set_ylabel('k (1/m)')
+
+            ax2.set_xticks([0, t_axis[int(self.N / 2) - 1], t_axis[int(self.N * 1.5) - 1]])
+            ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
+
+            plt.show()
+        
+        # do relaxation
+        # define larmor frequency w_G of spins during relaxation
+        # shape = (number of time steps, number of sampling points)
+        w_G = np.outer(G_values_array, self.x_axis) * self.gamma * 1e-3 + self.w_0
+
+        res = multiple_Relaxation(self.vec_spins, m0=self.m0, w=0, w0=w_G, t1=1e10, t2=1e10, t=1.5*Ts, steps=int(self.N*1.5), axis='z')
+
+        store = []
+        for i in range(2):
+            tmp = res[i,:,:].squeeze() # shape: (number of steps, number of sampling points)
+            
+            store.append(tmp @ self.density) # multiply by true density
+
+        Mx_1, My_1 = store[0][:int(self.N/2)], store[1][:int(self.N/2)]
+        Mx_2, My_2 = store[0][int(self.N/2):], store[1][int(self.N/2):]
+
+        # plot the full signal
+        signal_Mx = np.concatenate((Mx_1, Mx_2), axis=0)
+        signal_My = np.concatenate((My_1, My_2), axis=0)
+        adc_signal = Mx_2 * 1 + 1j * My_2
+        re_density = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(adc_signal)))
+        abs_re_density = np.abs(re_density)
+        abs_mse_error = np.abs(np.sum(abs_re_density - self.density))
+        plt.plot(self.x_axis, abs_re_density, label='reconstruction')
+        plt.plot(self.x_axis, self.density, label='original')
+        plt.legend()
+        plt.show()
+        print(f'error (MSE) {np.sum(np.abs(re_density) - self.density)}')
+        info = None
+
+        return abs_re_density, abs_mse_error, False, info
 
     # def action_space.sample(self):
     #     # return a random action
