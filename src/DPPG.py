@@ -2,19 +2,34 @@ import numpy as np
 import torch
 import torch.nn as nn
 import time
+import matplotlib.pyplot as plt
 
 # action space: {t1:_, t3:_, d1:_, d2:_, G1:_, G2:_} 6 arrays. 
 
-class env():
+class Env():
     # Environment, generates state and reward based on action
     def __init__(self):
         pass
 
-    def make(self, env_name):
+    def make(self, env_name, plot=False):
         # create the environment
         if env_name == "Two-Constant-Gradient":
-            self.action_space = 2
-            self.state_space = 6
+            # x space (spatial space)
+            self.FOV_x = 512 # field of view in x space
+            self.N = 512 # sampling points in x space (and k space, time space during ADC)
+            self.delta_x = self.FOV_x / self.N # sampling interval in x space
+            self.x_axis = np.linspace(-self.FOV_x / 2, self.FOV_x / 2 - self.delta_x, self.N) # symmetric x space
+            # create object
+            self.density = np.zeros(len(self.x_axis))
+            self.density[int(len(self.x_axis) / 4 + len(self.x_axis) / 8): int(len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8)] = 1
+            if plot:
+                plt.figure(figsize=(10, 6))
+                plt.plot(self.x_axis, self.density, '-', label='object')
+                plt.legend()
+                plt.xlabel('x')
+                plt.ylabel('density')
+                plt.grid()
+                plt.show()
 
         elif env_name == "Two-Constant-Gradient-With-slope":
             pass
