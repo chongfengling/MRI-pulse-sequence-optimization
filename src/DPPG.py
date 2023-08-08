@@ -27,7 +27,6 @@ class Env():
             self.gamma = 2.68e8 # rad/s/T
             self.gamma_bar = 0.5 * self.gamma/np.pi # s^-1T^-1
             # t space (time space) based on G1 and G2
-
             # create object over x space
             self.density = np.zeros(len(self.x_axis))
             self.density[int(len(self.x_axis) / 4 + len(self.x_axis) / 8): int(len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8)] = 1
@@ -39,6 +38,13 @@ class Env():
                 plt.ylabel('density')
                 plt.grid()
                 plt.show()
+            # prepare for simulation
+            # create spins after the rf pulse (lying on the y-axis)
+            # assume the spins are lying on each sampling point over y-axis
+            self.m0 = 1.0
+            self.w_0 = 0
+            self.vec_spins = np.zeros((3, self.N))
+            self.vec_spins[1, :] = 1
 
         else:
             raise RuntimeError("Env name not found.")
