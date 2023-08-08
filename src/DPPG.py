@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import time
 import matplotlib.pyplot as plt
+from utilities import *
 
 # action space: {t1:_, t3:_, d1:_, d2:_, G1:_, G2:_} 6 arrays. 
 
@@ -19,7 +20,15 @@ class Env():
             self.N = 512 # sampling points in x space (and k space, time space during ADC)
             self.delta_x = self.FOV_x / self.N # sampling interval in x space
             self.x_axis = np.linspace(-self.FOV_x / 2, self.FOV_x / 2 - self.delta_x, self.N) # symmetric x space
-            # create object
+            # k space (frequency space)
+            self.delta_k = 1 / self.FOV_x # sampling interval in k space
+            self.FOV_k = self.delta_k * self.N # field of view in k space
+            self.k_axis = np.linspace(-self.FOV_k / 2, self.FOV_k / 2 - self.delta_k, self.N) # symmetric k space
+            self.gamma = 2.68e8 # rad/s/T
+            self.gamma_bar = 0.5 * self.gamma/np.pi # s^-1T^-1
+            # t space (time space) based on G1 and G2
+
+            # create object over x space
             self.density = np.zeros(len(self.x_axis))
             self.density[int(len(self.x_axis) / 4 + len(self.x_axis) / 8): int(len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8)] = 1
             if plot:
@@ -31,8 +40,8 @@ class Env():
                 plt.grid()
                 plt.show()
 
-        elif env_name == "Two-Constant-Gradient-With-slope":
-            pass
+        else:
+            raise RuntimeError("Env name not found.")
 
     def reset(self):
         # reset the environment and return the initial state
