@@ -49,14 +49,18 @@ class Env():
 
     def action_space_sample(self):
         # return a random action from the action space
-        # 6 variables: t1:_, t3:_, d1:_, d2:_, G1:_, G2:_
-        self.low = np.array([0.0, 0.0, 0.0, 0.0, -1.0, -1.0])
-        self.high = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
-        self.action_space = np.random.uniform(low=self.low, high=self.high, size=6)
+        # 6 variables: t1:_, t3:_, d1:_, d2:_, G1symbol:_, G2symbol:_, Gvalues:_
+        self.action_low = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0])
+        self.action_high = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+        self.action_space = np.random.uniform(low=self.action_low, high=self.action_high, size=7)
         
 
     def step(self, action):
+        # action is an array of 7 variables (t1, t2, d1, d2, G1symbol, G2symbol, Gvalues)
         # take an action and return the next state, reward, a boolean indicating if the episode is done and additional info
+        
+        def nodes2variables(action):
+            pass
         pass
 
     # def action_space.sample(self):
@@ -82,12 +86,11 @@ class ActorNetwork():
             nn.Linear(512, 128),
             nn.ReLU(),
             nn.Linear(128, 32),
-            nn.ReLU(),
+            nn.Sigmoid(),
         )
 
         # Output layer
         self.output_layer = nn.Linear(32, action_space)
-
 
     def forward(self, state):
         tmp = self.fc_layers(state)
@@ -110,7 +113,7 @@ class CriticNetwork():
         # action input stream
         self.action_stream = nn.Sequential(
             nn.Linear(action_space, 16),
-            nn.ReLU()
+            nn.ReLU(),
             nn.Linear(16, 32),
             nn.ReLU()
         )
@@ -195,11 +198,11 @@ def main():
 
             for j in range(num_steps_per_ep):
                 # return an action based on the current state
-                actor = agent.actor(state)
+                action = agent.actor(state)
                 # interact with the environment
-                state_, reward, done, info = env.step(actor)
+                state_, reward, done, info = env.step(action)
                 # store the transition
-                agent.store_transition(state, actor, reward, state_, done)
+                agent.store_transition(state, action, reward, state_, done)
 
                 # update the network if the replay memory is full
                 if agent.memory.is_full():
