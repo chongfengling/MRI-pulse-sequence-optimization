@@ -228,8 +228,11 @@ class DPPG():
             target_param.data.copy_(param.data)
 
         # initialize replay buffer
-        # self.memory = 
-        # self.random_process = 
+        self.memory_capacity = 10000
+        self.batch_size = 64
+        # store one current states, one action, one reward, one next state  
+        self.memory = np.zeros((self.memory_capacity, self.state_space * 2 + self.action_space + 1), dtype=np.float32)
+        self.mpointer = 0 # memory pointer
 
         # define hyper-parameters
         self.batch_size = 64
@@ -244,10 +247,24 @@ class DPPG():
 
     def actor(self, state, exploraion_noise=True):
         # return an action based on the current state with or without exploration noise
-        pass
+        # print(to_numpy(self.actor(to_tensor(state))).shape)
+        action = to_numpy(self.actor(to_tensor(state)))
 
-    def store_transition(self, state, action, reward, state_, done):
-        pass
+        if exploration_noise:
+            # add noise controlled by hyper-parameter var
+            action = np.clip(np.random.normal(action, self.exploration_var), 0.02, 0.98)
+        
+        self.s_t = action
+        return action
+
+    def store_transition(self, state, action, reward, state_):
+        # store the transition in the replay buffer
+
+        transition = np.hstack((state.astype(np.float32), action.astype(np.float32), [reward], state_.astype(np.float32)))
+
+        current_index = self.mpointer % self.memory_capacity # replace if memory is full
+        self.memory[current_index, :] = transition
+        self.mpointer += 1
 
     def update_network(self):
         pass
