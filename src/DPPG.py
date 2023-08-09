@@ -51,7 +51,8 @@ class Env():
 
     def reset(self):
         # reset the environment and return the initial state
-        pass
+        return np.random.rand(len(self.x_axis))
+    
 
     def action_space_sample(self):
         # return a random action from the action space
