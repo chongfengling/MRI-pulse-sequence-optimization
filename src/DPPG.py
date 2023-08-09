@@ -5,6 +5,7 @@ import time
 import matplotlib.pyplot as plt
 from utilities import *
 import argparse
+import random
 
 # action space: {t1:_, t3:_, d1:_, d2:_, G1:_, G2:_} 6 arrays.
 
@@ -218,12 +219,12 @@ class CriticNetwork(nn.Module):
             nn.Linear(256, 1),
         )
 
-        def forward(self, state, action):
-            state_tmp = self.state_stream(state)
-            action_tmp = self.action_stream(action)
-            combined = torch.cat((state_tmp, action_tmp), dim=1)
-            out = self.combined_layer(combined)
-            return out
+    def forward(self, state, action):
+        state_tmp = self.state_stream(state)
+        action_tmp = self.action_stream(action)
+        combined = torch.cat((state_tmp, action_tmp), dim=1)
+        out = self.combined_layer(combined)
+        return out
 
 
 class DPPG:
