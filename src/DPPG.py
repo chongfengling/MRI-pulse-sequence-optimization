@@ -157,7 +157,7 @@ class Env:
         # print(f'error (MSE) {mse}')
         info = None
 
-        return abs_re_density, mse, False, info
+        return abs_re_density, -mse, False, info
 
     # def action_space.sample(self):
     #     # return a random action
