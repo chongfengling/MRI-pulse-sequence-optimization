@@ -16,8 +16,8 @@ class Env():
         # create the environment
         if env_name == "Two-Constant-Gradient":
             # x space (spatial space)
-            self.FOV_x = 512 # field of view in x space
-            self.N = 512 # sampling points in x space (and k space, time space during ADC)
+            self.FOV_x = 32 # field of view in x space
+            self.N = 32 # sampling points in x space (and k space, time space during ADC)
             self.delta_x = self.FOV_x / self.N # sampling interval in x space
             self.x_axis = np.linspace(-self.FOV_x / 2, self.FOV_x / 2 - self.delta_x, self.N) # symmetric x space
             # k space (frequency space)
@@ -76,6 +76,7 @@ class Env():
         t_axis = np.linspace(0, t_max, int(self.N * 1.5))
         G_values_array = np.zeros(len(t_axis))
         # two gradient can be overlapped
+        # print(f't1: {t1}, t2: {t2}, d1: {d1}, d2: {d2}, G1symbol: {G1symbol}, G2symbol: {G2symbol}, Gvalue: {Gvalue}')
         G_values_array[int(t1 * len(t_axis)): int(t1 * len(t_axis) + d1 * len(t_axis))] += G1symbol * Gvalue
         G_values_array[int(t2 * len(t_axis)): int(t2 * len(t_axis) + d2 * len(t_axis))] += G2symbol * Gvalue
         k_traj = np.cumsum(G_values_array) * 1e-3
@@ -161,6 +162,7 @@ class ActorNetwork(nn.Module):
     def forward(self, state):
         tmp = self.fc_layers(state)
         out = self.output_layer(tmp)
+        # out = 0.9 * out + 0.01
         return out
 
 class CriticNetwork(nn.Module):
@@ -207,7 +209,7 @@ class DPPG():
         self.state_space = state_space
         self.action_space = action_space
 
-        self.env = env
+        self.env = env #! necessary?
 
         self.seed = 215
 
@@ -235,17 +237,17 @@ class DPPG():
         self.mpointer = 0 # memory pointer
 
         # define hyper-parameters
-        self.batch_size = 64
         self.tau = 0.001
         self.discount = 0.99
         self.depsilon = 1.0 / 50000
+        self.exploration_var = 0.1
 
         self.epsilon = 1.0
         self.s_t = None # most recent state
         self.a_t = None # most recent action
         self.is_training = True
 
-    def actor(self, state, exploraion_noise=True):
+    def select_action(self, state, exploration_noise=True):
         # return an action based on the current state with or without exploration noise
         # print(to_numpy(self.actor(to_tensor(state))).shape)
         action = to_numpy(self.actor(to_tensor(state)))
@@ -270,6 +272,9 @@ class DPPG():
         pass
 
 def main():
+    agent = DPPG(state_space=32, action_space=7, env=Env())
+    env = Env()
+    env.make("Two-Constant-Gradient", plot=False)
 
     def train(agent, env, num_episode = 1000, num_steps_per_ep = 1000):
         for i in range(num_episode): 
@@ -281,20 +286,23 @@ def main():
 
             for j in range(num_steps_per_ep):
                 # return an action based on the current state
-                action = agent.actor(state)
+                action = agent.select_action(state, exploration_noise=True)
+                # print(action)
                 # interact with the environment
                 state_, reward, done, info = env.step(action)
                 # store the transition
-                agent.store_transition(state, action, reward, state_, done)
+                agent.store_transition(state, action, reward, state_)
 
                 # update the network if the replay memory is full
-                if agent.memory.is_full():
+                if agent.mpointer > agent.memory_capacity:
+                    break
                     agent.update_network()
 
                 # output records
                 state = state_
                 episode_reward += reward
                 if j == num_steps_per_ep - 1:
+                # if True:
                     print(
                         '\rEpisode: {}/{}  | Episode Reward: {:.4f}  | Running Time: {:.4f}'.format(
                             i, num_episode, episode_reward,
@@ -302,6 +310,8 @@ def main():
                         ), end=''
                     )
 
-                
+    train(agent=agent, env=env)
+
+main()
 
 
