@@ -4,6 +4,7 @@ import torch.nn as nn
 import time
 import matplotlib.pyplot as plt
 from utilities import *
+import argparse
 
 # action space: {t1:_, t3:_, d1:_, d2:_, G1:_, G2:_} 6 arrays.
 
@@ -13,12 +14,14 @@ class Env:
     def __init__(self):
         pass
 
-    def make(self, env_name, plot=False):
+    def make(self, env_name, args, plot=False):
         # create the environment
         if env_name == "Two-Constant-Gradient":
             # x space (spatial space)
-            self.FOV_x = 32  # field of view in x space
-            self.N = 32  # sampling points in x space (and k space, time space during ADC)
+            self.FOV_x = args.FOV_x  # field of view in x space
+            self.N = (
+                args.N  # sampling points in x space (and k space, time space during ADC)
+            )
             self.delta_x = self.FOV_x / self.N  # sampling interval in x space
             self.x_axis = np.linspace(
                 -self.FOV_x / 2, self.FOV_x / 2 - self.delta_x, self.N
@@ -224,37 +227,48 @@ class CriticNetwork(nn.Module):
 
 
 class DPPG:
-    def __init__(self, state_space, action_space, env):
+    def __init__(self, state_space, action_space, env, args):
         self.state_space = state_space
         self.action_space = action_space
 
         self.env = env  #! necessary?
 
-        self.seed = 215
+        self.seed = args.seed
+        self.lr_a, self.lr_c = args.lr_a, args.lr_c
 
         # create Actor Network and its target network
         self.actor = ActorNetwork(state_space, action_space)
         self.actor_target = ActorNetwork(state_space, action_space)
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=0.0001)  #!
+        self.actor_optimizer = torch.optim.Adam(
+            self.actor.parameters(), lr=self.lr_a
+        )  #!
         # make sure the target network has the same weights as the original network
-        for target_param, param in zip(
-            self.actor.parameters(), self.actor_target.parameters()
-        ):
-            target_param.data.copy_(param.data)
+
+        hard_update(self.actor_target, self.actor)
+        # for target_param, param in zip(
+        #     self.actor.parameters(), self.actor_target.parameters()
+        # ):
+        #     target_param.data.copy_(param.data)
 
         # create Critic Network and its target network
         self.critic = CriticNetwork(state_space, action_space)
         self.critic_target = CriticNetwork(state_space, action_space)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=0.001)  #!
+        self.critic_optimizer = torch.optim.Adam(
+            self.critic.parameters(), lr=self.lr_c
+        )  #!
         # make sure the target network has the same weights as the original network
-        for target_param, param in zip(
-            self.critic.parameters(), self.critic_target.parameters()
-        ):
-            target_param.data.copy_(param.data)
+
+        # ? check
+        hard_update(self.critic_target, self.critic)
+
+        # for target_param, param in zip(
+        #     self.critic.parameters(), self.critic_target.parameters()
+        # ):
+        #     target_param.data.copy_(param.data)
 
         # initialize replay buffer
-        self.memory_capacity = 10000
-        self.batch_size = 64
+        self.memory_capacity = args.memory_capacity
+        self.batch_size = args.batch_size
         # store one current states, one action, one reward, one next state
         self.memory = np.zeros(
             (self.memory_capacity, self.state_space * 2 + self.action_space + 1),
@@ -263,15 +277,19 @@ class DPPG:
         self.mpointer = 0  # memory pointer
 
         # define hyper-parameters
-        self.tau = 0.001
-        self.discount = 0.99
-        self.depsilon = 1.0 / 50000
-        self.exploration_var = 0.1
+        self.tau = args.tau
+        self.gamma = args.gamma
+        #! self.depsilon = 1.0 / 50000
 
-        self.epsilon = 1.0
+        self.exploration_var = args.exploration_var
+        self.left_clip, self.right_clip = args.left_clip, args.right_clip
+
+        # self.epsilon = 1.0
         self.s_t = None  # most recent state
         self.a_t = None  # most recent action
         self.is_training = True
+
+        self.criterion = nn.MSELoss()
 
     def select_action(self, state, exploration_noise=True):
         # return an action based on the current state with or without exploration noise
@@ -280,7 +298,11 @@ class DPPG:
 
         if exploration_noise:
             # add noise controlled by hyper-parameter var
-            action = np.clip(np.random.normal(action, self.exploration_var), 0.02, 0.98)
+            action = np.clip(
+                np.random.normal(action, self.exploration_var),
+                self.left_clip,
+                self.right_clip,
+            )
 
         self.s_t = action
         return action
@@ -307,28 +329,28 @@ class DPPG:
         # update two networks based on the transitions stored in the replay buffer
 
         # sample a batch of transitions
-        indices = np.random.sample(self.memory_capacity, self.batch_size)
+        indices = random.sample(range(self.memory_capacity), self.batch_size)
 
         batch = self.memory[indices, :]
         batch_state = to_tensor(batch[:, : self.state_space])
         batch_action = to_tensor(
             batch[:, self.state_space : self.state_space + self.action_space]
         )
+        # ? scale the reward to small value?
         batch_reward = batch[:, -self.state_space - 1 : -self.state_space]
         batch_state_ = to_tensor(batch[:, -self.state_space :])
 
-        # prepare for the target q batch (y)
-
+        # prepare for the target q batch
         with torch.no_grad():
             q_target_batch = self.critic_target(
                 batch_state_, self.actor_target(batch_state_)
             )
 
-        y = batch_reward + self.discount * q_target_batch
-
-        # update the critic network
+        y = batch_reward + self.gamma * to_numpy(q_target_batch)
         q_batch = self.critic(batch_state, batch_action)
-        value_loss = nn.MSELoss(q_batch, y)
+        # calculate the value loss
+        value_loss = self.criterion(q_batch, to_tensor(y))
+        # update the critic network based on the value loss
         self.critic.zero_grad()
         value_loss.backward()
         self.critic_optimizer.step()
@@ -344,12 +366,132 @@ class DPPG:
         soft_update(self.critic_target, self.critic, self.tau)
 
 
-def main():
-    agent = DPPG(state_space=32, action_space=7, env=Env())
-    env = Env()
-    env.make("Two-Constant-Gradient", plot=False)
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='DPPG_Two-Constant-Gradient')
+    parser.add_argument('--env', default='Two-Constant-Gradient', type=str, help='env')
+    parser.add_argument('--FOV_x', default=32, type=int, help='FOV_x')
+    parser.add_argument(
+        '--N',
+        default=32,
+        type=int,
+        help='sampling points in x space (and k space, time space during ADC)',
+    )
+    parser.add_argument('--seed', default=215, type=int, help='seed')
+    parser.add_argument(
+        '--state_space',
+        default=32,
+        type=int,
+        help='state_space including density of objects',
+    )
+    parser.add_argument(
+        '--action_space',
+        default=7,
+        type=int,
+        help='action_space including t1, t3, d1, d2, G1symbol, G2symbol, Gvalue',
+    )
+    parser.add_argument(
+        '--num_episode',
+        default=8,
+        type=int,
+        help='number of episodes. Each episode initializes new random process and state',
+    )
+    parser.add_argument(
+        '--num_steps_per_ep', default=200, type=int, help='number of steps per episode'
+    )
 
-    def train(agent, env, num_episode=1000, num_steps_per_ep=1000):
+    parser.add_argument(
+        '--a_hidden1', default=512, type=int, help='hidden layer 1 in actor network'
+    )
+    parser.add_argument(
+        '--a_hidden2', default=128, type=int, help='hidden layer 2 in actor network'
+    )
+    parser.add_argument(
+        '--a_hidden3', default=32, type=int, help='hidden layer 3 in actor network'
+    )
+
+    parser.add_argument(
+        '--c_s_hidden1',
+        default=128,
+        type=int,
+        help='hidden layer 1 in critic network for state input stream',
+    )
+    parser.add_argument(
+        '--c_s_hidden2',
+        default=32,
+        type=int,
+        help='hidden layer 2 in critic network for state input stream',
+    )
+    parser.add_argument(
+        '--c_a_hidden1',
+        default=16,
+        type=int,
+        help='hidden layer 1 in critic network for action input stream',
+    )
+    parser.add_argument(
+        '--c_a_hidden2',
+        default=32,
+        type=int,
+        help='hidden layer 2 in critic network for action input stream',
+    )
+
+    parser.add_argument(
+        '--c_combined_hidden1',
+        default=128,
+        type=int,
+        help='hidden layer 1 in critic network for combined network',
+    )
+    parser.add_argument(
+        '--c_combined_hidden2',
+        default=256,
+        type=int,
+        help='hidden layer 2 in critic network for combined network',
+    )
+
+    parser.add_argument(
+        '--lr_a', default=0.001, type=float, help='learning rate of actor network'
+    )
+    parser.add_argument(
+        '--lr_c', default=0.002, type=float, help='learning rate of critic network'
+    )
+
+    parser.add_argument(
+        '--memory_capacity', default=50, type=int, help='memory capacity'
+    )
+    parser.add_argument(
+        '--batch_size', default=32, type=int, help='minibatch size from memory'
+    )
+
+    parser.add_argument(
+        '--exploration_var',
+        default=0.1,
+        type=float,
+        help='exploration variance in random process',
+    )
+    parser.add_argument('--left_clip', default=0.01, type=float, help='left clip')
+    parser.add_argument('--right_clip', default=0.99, type=float, help='right clip')
+
+    parser.add_argument(
+        '--gamma', default=0.9, type=float, help='reward discount factor'
+    )
+    parser.add_argument('--tau', default=0.01, type=float, help='soft update factor')
+
+    args = parser.parse_args()
+
+    return args
+
+
+def main():
+    args = parse_arguments()
+    env = Env()
+    agent = DPPG(
+        state_space=args.state_space, action_space=args.action_space, env=env, args=args
+    )
+    env.make(env_name=args.env, args=args, plot=False)
+
+    def train(
+        agent, env, num_episode=args.num_episode, num_steps_per_ep=args.num_steps_per_ep
+    ):
+        reward_record = []
         for i in range(num_episode):
             # reset the environment
             state = env.reset()
@@ -362,6 +504,7 @@ def main():
                 action = agent.select_action(state, exploration_noise=True)
                 # print(action)
                 # interact with the environment
+                # ? value of reward should be scaled or not
                 state_, reward, done, info = env.step(action)
                 # store the transition
                 agent.store_transition(state, action, reward, state_)
@@ -369,9 +512,9 @@ def main():
                 # update the network if the replay memory is full
                 if agent.mpointer > agent.memory_capacity:
                     # break
-                    print(
-                        f'update, mpointer = {agent.mpointer}, memory_capacity = {agent.memory_capacity}'
-                    )
+                    # print(
+                    #     f'update, mpointer = {agent.mpointer}, memory_capacity = {agent.memory_capacity}'
+                    # )
                     agent.update_network()
 
                 # output records
@@ -382,9 +525,11 @@ def main():
                     print(
                         '\rEpisode: {}/{}  | Episode Reward: {:.4f}  | Running Time: {:.4f}'.format(
                             i, num_episode, episode_reward, time.time() - t1
-                        ),
-                        end='',
+                        )
                     )
+                    reward_record.append(episode_reward)
+        print(reward_record)
+        plt.plot(state)
 
     train(agent=agent, env=env)
 
