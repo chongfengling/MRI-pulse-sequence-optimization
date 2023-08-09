@@ -113,15 +113,15 @@ class Env():
         adc_signal = Mx_2 * 1 + 1j * My_2
         re_density = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(adc_signal)))
         abs_re_density = np.abs(re_density)
-        abs_mse_error = np.abs(np.sum(abs_re_density - self.density))
+        mse = (np.linalg.norm(abs_re_density-self.density)**2)/len(self.density)
         plt.plot(self.x_axis, abs_re_density, label='reconstruction')
         plt.plot(self.x_axis, self.density, label='original')
         plt.legend()
-        plt.show()
-        print(f'error (MSE) {np.sum(np.abs(re_density) - self.density)}')
+        # plt.show()
+        # print(f'error (MSE) {mse}')
         info = None
 
-        return abs_re_density, abs_mse_error, False, info
+        return abs_re_density, mse, False, info
 
     # def action_space.sample(self):
     #     # return a random action
@@ -133,7 +133,7 @@ class Env():
 
     
 
-class ActorNetwork():
+class ActorNetwork(nn.Module):
     # Actor Network, generates action based on state
     # observation is the state
     def __init__(self, state_space, action_space):
@@ -146,18 +146,23 @@ class ActorNetwork():
             nn.Linear(512, 128),
             nn.ReLU(),
             nn.Linear(128, 32),
-            nn.Sigmoid(),
+            nn.ReLU(),
         )
 
         # Output layer
-        self.output_layer = nn.Linear(32, action_space)
+        # rescale?
+        # self.output_layer = nn.Linear(32, action_space)
+        self.output_layer = nn.Sequential(
+            nn.Linear(32, action_space),
+            nn.Sigmoid()
+        )
 
     def forward(self, state):
         tmp = self.fc_layers(state)
         out = self.output_layer(tmp)
         return out
 
-class CriticNetwork():
+class CriticNetwork(nn.Module):
     # Critic Network, generates Q value based on (current?) state and action
     def __init__(self, state_space, action_space):
         super(CriticNetwork, self).__init__()
