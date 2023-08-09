@@ -149,10 +149,11 @@ class Env:
         re_density = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(adc_signal)))
         abs_re_density = np.abs(re_density)
         mse = (np.linalg.norm(abs_re_density - self.density) ** 2) / len(self.density)
-        plt.plot(self.x_axis, abs_re_density, label='reconstruction')
-        plt.plot(self.x_axis, self.density, label='original')
-        plt.legend()
-        # plt.show()
+        if plot:
+            plt.plot(self.x_axis, abs_re_density, label='reconstruction')
+            plt.plot(self.x_axis, self.density, label='original')
+            plt.legend()
+            plt.show()
         # print(f'error (MSE) {mse}')
         info = None
 
@@ -529,9 +530,11 @@ def main():
                         )
                     )
                     reward_record.append(episode_reward)
+                plt.plot(env.x_axis, state, label=f'{i}, {j}')
+                plt.plot(env.x_axis, env.density)
+                plt.legend()
+                plt.show()
         print(reward_record)
-        plt.plot(state)
-
     train(agent=agent, env=env)
 
 
