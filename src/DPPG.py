@@ -269,7 +269,45 @@ class DPPG():
         self.mpointer += 1
 
     def update_network(self):
-        pass
+        # update two networks based on the transitions stored in the replay buffer
+
+        # sample a batch of transitions
+        indices = np.random.sample(self.memory_capacity, self.batch_size)
+
+        batch = self.memory[indices, :]
+        batch_state = to_tensor(batch[:, : self.state_space])
+        batch_action = to_tensor(
+            batch[:, self.state_space : self.state_space + self.action_space]
+        )
+        batch_reward = batch[:, -self.state_space - 1 : -self.state_space]
+        batch_state_ = to_tensor(batch[:, -self.state_space :])
+
+        # prepare for the target q batch (y)
+
+        with torch.no_grad():
+            q_target_batch = self.critic_target(
+                batch_state_, self.actor_target(batch_state_)
+            )
+
+        y = batch_reward + self.discount * q_target_batch
+
+        # update the critic network
+        q_batch = self.critic(batch_state, batch_action)
+        value_loss = nn.MSELoss(q_batch, y)
+        self.critic.zero_grad()
+        value_loss.backward()
+        self.critic_optimizer.step()
+
+        # update the actor network
+        self.actor.zero_grad()
+        policy_loss = -self.critic(batch_state, self.actor(batch_state)).mean()
+        policy_loss.backward()
+        self.actor_optimizer.step()
+
+        # (soft) update two target networks
+        soft_update(self.actor_target, self.actor, self.tau)
+        soft_update(self.critic_target, self.critic, self.tau)
+
 
 def main():
     agent = DPPG(state_space=32, action_space=7, env=Env())
@@ -295,7 +333,10 @@ def main():
 
                 # update the network if the replay memory is full
                 if agent.mpointer > agent.memory_capacity:
-                    break
+                    # break
+                    print(
+                        f'update, mpointer = {agent.mpointer}, memory_capacity = {agent.memory_capacity}'
+                    )
                     agent.update_network()
 
                 # output records
