@@ -85,7 +85,13 @@ class Env:
             raise ValueError("Invalid environment name.")
 
     def reset(self):
-        # reset the environment and return the initial state
+        # reset the object and return the initial state
+        self.density = np.zeros(len(self.x_axis), dtype=int)
+        indices = np.random.choice(self.density.size, 30, replace=False)
+        self.density[indices[:15]] = 1
+        self.density[indices[15:]] = 2
+        self.density_complex = self.density.astype(complex)
+
         return np.random.rand(len(self.x_axis))
 
     def step(self, action, plot=False):
