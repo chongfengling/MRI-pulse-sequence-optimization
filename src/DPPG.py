@@ -15,10 +15,7 @@ import os
 
 class Env:
     # Environment, generates state and reward based on action
-    def __init__(self):
-        pass
-
-    def make(self, env_name, args, plot=False):
+    def __init__(self, args, plot=False):
         # create the universal environment
         # x space (spatial space)
         self.FOV_x = args.FOV_x  # field of view in x space
@@ -61,9 +58,10 @@ class Env:
         self.w_0 = 0
         self.vec_spins = np.zeros((3, self.N))
         self.vec_spins[1, :] = 1
-        self.env_name = env_name
+        self.env_name = args.env
         self.T2 = args.T2
 
+    def make(self, args):
         # specify the action space
         if self.env_name == "Two-Constant-Gradient":
             # 6 variables: t1:_, t3:_, d1:_, d2:_, G1symbol:_, G2symbol:_, Gvalues:_
@@ -80,7 +78,6 @@ class Env:
             )
             self.max_slew_rate = args.max_slew_rate
             self.slope_penalty_factor = args.slope_penalty_factor
-
         else:
             raise ValueError("Invalid environment name.")
 
@@ -192,8 +189,10 @@ class Env:
         mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
         # print(f'error (MSE) {mse}') # 0.6704205526298735
         # reward of slew rate in the range of [-1 or 1] * factor
-        N_slope = (GValue / self.max_slew_rate) / delta_t # minimum sampling points of slew rate
-        if min(N_d1, N_d3, N_d4, N_d6) < N_slope: # 
+        N_slope = (
+            GValue / self.max_slew_rate
+        ) / delta_t  # minimum sampling points of slew rate
+        if min(N_d1, N_d3, N_d4, N_d6) < N_slope:  #
             reward_slew_rate = -1
         else:
             reward_slew_rate = 1
@@ -210,7 +209,8 @@ class Env:
         return abs_re_density, reward, False, info
 
     def render(self):
-        # display the current state of the environment
+        # display the state (reconstructed density) and the object (true density) and gradients and k space trajectory
+
         pass
 
 
@@ -440,7 +440,9 @@ class DPPG:
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='DPPG_Two-Constant-Gradient')
-    parser.add_argument('--env', default='Two-Constant-Gradient-With_Slope', type=str, help='env')
+    parser.add_argument(
+        '--env', default='Two-Constant-Gradient-With_Slope', type=str, help='env'
+    )
     parser.add_argument('--FOV_x', default=32, type=int, help='FOV_x')
     parser.add_argument(
         '--N',
@@ -455,7 +457,9 @@ def parse_arguments():
         type=float,
         help='max slew rate of gradient, defined as peak amplitude of gradient divided by rise time',
     )
-    parser.add_argument('--slope_penalty_factor', default=0.4, type=float, help='slope penalty factor')
+    parser.add_argument(
+        '--slope_penalty_factor', default=0.4, type=float, help='slope penalty factor'
+    )
     parser.add_argument('--seed', default=215, type=int, help='seed')
     parser.add_argument(
         '--state_space',
@@ -562,11 +566,11 @@ def parse_arguments():
 
 def main():
     args = parse_arguments()
-    env = Env()
+    env = Env(args=args, plot=False)
     agent = DPPG(
         state_space=args.state_space, action_space=args.action_space, env=env, args=args
     )
-    env.make(env_name=args.env, args=args, plot=False)
+    env.make(args=args)
 
     def train(
         agent, env, num_episode=args.num_episode, num_steps_per_ep=args.num_steps_per_ep
