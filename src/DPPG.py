@@ -77,6 +77,7 @@ class Env:
                 low=self.action_low, high=self.action_high, size=4
             )
             self.max_slew_rate = args.max_slew_rate
+            self.slope_penalty_factor = args.slope_penalty_factor
 
         else:
             raise ValueError("Invalid environment name.")
@@ -109,12 +110,13 @@ class Env:
         # d5: time for gradient to stay its minimum value (G2)
         # d6: time for gradient to back to zero
         # sum of d1, d2, d3, d4, d5, d6 should be equal to 1
-        N_d1, N_d2, N_d3, N_d4, N_d5 = (
+        N_d1, N_d2, N_d3, N_d4, N_d5, N_d6 = (
             int(d1 * self.N * 1.5),
             int(d2 * self.N * 1.5),
             int(d3 * self.N * 1.5),
             int(d4 * self.N * 1.5),
             int(d5 * self.N * 1.5),
+            int(d6 * self.N * 1.5),
         )
         G_values_array[:N_d1] = np.linspace(0, G1, N_d1)
         G_values_array[N_d1 : N_d1 + N_d2] = G1
@@ -180,17 +182,24 @@ class Env:
         # reward has two components: the first is the MSE of two complex arrays, the second is the slew rate
         # reward of mse < 0
         mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
-        # reward of slew rate in the range of [0, 1]
+        # print(f'error (MSE) {mse}') # 0.6704205526298735
+        # reward of slew rate in the range of [-1 or 1] * factor
+        N_slope = (GValue / self.max_slew_rate) / delta_t # minimum sampling points of slew rate
+        if min(N_d1, N_d3, N_d4, N_d6) < N_slope: # 
+            reward_slew_rate = -1
+        else:
+            reward_slew_rate = 1
+
+        reward = -1 * mse + reward_slew_rate * self.slope_penalty_factor
 
         if plot:
             plt.plot(self.x_axis, abs_re_density, label='reconstruction')
             plt.plot(self.x_axis, self.density, label='original')
             plt.legend()
             plt.show()
-        # print(f'error (MSE) {mse}')
         info = None
         # at this time use abs_re_density as the state
-        return abs_re_density, -mse, False, info
+        return abs_re_density, reward, False, info
 
     def render(self):
         # display the current state of the environment
@@ -401,7 +410,7 @@ class DPPG:
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='DPPG_Two-Constant-Gradient')
-    parser.add_argument('--env', default='Two-Constant-Gradient', type=str, help='env')
+    parser.add_argument('--env', default='Two-Constant-Gradient-With_Slope', type=str, help='env')
     parser.add_argument('--FOV_x', default=32, type=int, help='FOV_x')
     parser.add_argument(
         '--N',
@@ -412,10 +421,11 @@ def parse_arguments():
     parser.add_argument('--T2', default=1e2, type=float, help='T2 relaxation time')
     parser.add_argument(
         '--max_slew_rate',
-        default=150,
+        default=10,
         type=float,
         help='max slew rate of gradient, defined as peak amplitude of gradient divided by rise time',
     )
+    parser.add_argument('--slope_penalty_factor', default=0.4, type=float, help='slope penalty factor')
     parser.add_argument('--seed', default=215, type=int, help='seed')
     parser.add_argument(
         '--state_space',
@@ -431,12 +441,12 @@ def parse_arguments():
     )
     parser.add_argument(
         '--num_episode',
-        default=3,
+        default=8,
         type=int,
         help='number of episodes. Each episode initializes new random process and state',
     )
     parser.add_argument(
-        '--num_steps_per_ep', default=200, type=int, help='number of steps per episode'
+        '--num_steps_per_ep', default=128, type=int, help='number of steps per episode'
     )
 
     parser.add_argument(
@@ -544,7 +554,7 @@ def main():
                 action = agent.select_action(state, exploration_noise=True)
                 # print(action)
                 # interact with the environment
-                # ? value of reward should be scaled or not
+                # ? value of reward should be scaled or not. Yes but not here
                 state_, reward, done, info = env.step(action)
                 # store the transition
                 agent.store_transition(state, action, reward, state_)
@@ -571,7 +581,7 @@ def main():
                 plt.plot(env.x_axis, state, '-o', label=f'{i}, {j}')
                 plt.plot(env.x_axis, env.density)
                 plt.legend()
-                plt.show()
+                # plt.show()
         print(reward_record)
 
     train(agent=agent, env=env)
