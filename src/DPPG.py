@@ -16,66 +16,76 @@ class Env:
         pass
 
     def make(self, env_name, args, plot=False):
-        # create the environment
-        if env_name == "Two-Constant-Gradient":
-            # x space (spatial space)
-            self.FOV_x = args.FOV_x  # field of view in x space
-            self.N = (
-                args.N  # sampling points in x space (and k space, time space during ADC)
+        # create the universal environment
+        # x space (spatial space)
+        self.FOV_x = args.FOV_x  # field of view in x space
+        self.N = (
+            args.N  # sampling points in x space (and k space, time space during ADC)
+        )
+        self.delta_x = self.FOV_x / self.N  # sampling interval in x space
+        self.x_axis = np.linspace(
+            -self.FOV_x / 2, self.FOV_x / 2 - self.delta_x, self.N
+        )  # symmetric x space
+        # k space (frequency space)
+        self.delta_k = 1 / self.FOV_x  # sampling interval in k space
+        self.FOV_k = self.delta_k * self.N  # field of view in k space
+        self.k_axis = np.linspace(
+            -self.FOV_k / 2, self.FOV_k / 2 - self.delta_k, self.N
+        )  # symmetric k space
+        self.gamma = 2.68e8  # rad/s/T
+        self.gamma_bar = 0.5 * self.gamma / np.pi  # s^-1T^-1
+        # t space (time space) based on G1 and G2
+        # create object over x space
+        self.density = np.zeros(len(self.x_axis))
+        self.density[
+            int(len(self.x_axis) / 4 + len(self.x_axis) / 8) : int(
+                len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8
             )
-            self.delta_x = self.FOV_x / self.N  # sampling interval in x space
-            self.x_axis = np.linspace(
-                -self.FOV_x / 2, self.FOV_x / 2 - self.delta_x, self.N
-            )  # symmetric x space
-            # k space (frequency space)
-            self.delta_k = 1 / self.FOV_x  # sampling interval in k space
-            self.FOV_k = self.delta_k * self.N  # field of view in k space
-            self.k_axis = np.linspace(
-                -self.FOV_k / 2, self.FOV_k / 2 - self.delta_k, self.N
-            )  # symmetric k space
-            self.gamma = 2.68e8  # rad/s/T
-            self.gamma_bar = 0.5 * self.gamma / np.pi  # s^-1T^-1
-            # t space (time space) based on G1 and G2
-            # create object over x space
-            self.density = np.zeros(len(self.x_axis))
-            self.density[
-                int(len(self.x_axis) / 4 + len(self.x_axis) / 8) : int(
-                    len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8
-                )
-            ] = 1
-            if plot:
-                plt.figure(figsize=(10, 6))
-                plt.plot(self.x_axis, self.density, '-', label='object')
-                plt.legend()
-                plt.xlabel('x')
-                plt.ylabel('density')
-                plt.grid()
-                plt.show()
-            # prepare for simulation
-            # create spins after the rf pulse (lying on the y-axis)
-            # assume the spins are lying on each sampling point over y-axis
-            self.m0 = 1.0
-            self.w_0 = 0
-            self.vec_spins = np.zeros((3, self.N))
-            self.vec_spins[1, :] = 1
+        ] = 1
+        if plot:
+            plt.figure(figsize=(10, 6))
+            plt.plot(self.x_axis, self.density, '-', label='object')
+            plt.legend()
+            plt.xlabel('x')
+            plt.ylabel('density')
+            plt.grid()
+            plt.show()
+        # prepare for simulation
+        # create spins after the rf pulse (lying on the y-axis)
+        # assume the spins are lying on each sampling point over y-axis
+        self.m0 = 1.0
+        self.w_0 = 0
+        self.vec_spins = np.zeros((3, self.N))
+        self.vec_spins[1, :] = 1
+        self.env_name = env_name
+
+        # specify the action space
+        if self.env_name == "Two-Constant-Gradient":
+            # 6 variables: t1:_, t3:_, d1:_, d2:_, G1symbol:_, G2symbol:_, Gvalues:_
+            self.action_low = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0])
+            self.action_high = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+            self.action_space = np.random.uniform(
+                low=self.action_low, high=self.action_high, size=7
+            )
+        elif self.env_name == "Two-Constant-Gradient-With_Slope":
+
+
+            self.action_low = np.array([0.0, 0.0, 0.0, 0.0])
+            self.action_high = np.array([1.0, 1.0, 1.0, 1.0])
+            self.action_space = np.random.uniform(
+                low=self.action_low, high=self.action_high, size=4
+            )
 
         else:
-            raise RuntimeError("Env name not found.")
+            raise ValueError("Invalid environment name.")
 
     def reset(self):
         # reset the environment and return the initial state
         return np.random.rand(len(self.x_axis))
 
-    def action_space_sample(self):
-        # return a random action from the action space
-        # 6 variables: t1:_, t3:_, d1:_, d2:_, G1symbol:_, G2symbol:_, Gvalues:_
-        self.action_low = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0])
-        self.action_high = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
-        self.action_space = np.random.uniform(
-            low=self.action_low, high=self.action_high, size=7
-        )
-
     def step(self, action, plot=False):
+        
+
         # action is an array of 7 variables (t1, t2, d1, d2, G1symbol, G2symbol, Gvalues)
         # take an action and return the next state, reward, a boolean indicating if the episode is done and additional info
 
@@ -158,10 +168,6 @@ class Env:
         info = None
 
         return abs_re_density, -mse, False, info
-
-    # def action_space.sample(self):
-    #     # return a random action
-    #     pass
 
     def render(self):
         # display the current state of the environment
@@ -378,7 +384,7 @@ def parse_arguments():
         type=int,
         help='sampling points in x space (and k space, time space during ADC)',
     )
-    parser.add_argument('--seed', default=215, type=int, help='seed')
+    parser.add_argument('--seed', default=2023, type=int, help='seed')
     parser.add_argument(
         '--state_space',
         default=32,
@@ -393,7 +399,7 @@ def parse_arguments():
     )
     parser.add_argument(
         '--num_episode',
-        default=8,
+        default=3,
         type=int,
         help='number of episodes. Each episode initializes new random process and state',
     )
@@ -530,11 +536,12 @@ def main():
                         )
                     )
                     reward_record.append(episode_reward)
-                plt.plot(env.x_axis, state, label=f'{i}, {j}')
+                plt.plot(env.x_axis, state, '-o', label=f'{i}, {j}')
                 plt.plot(env.x_axis, env.density)
                 plt.legend()
                 plt.show()
         print(reward_record)
+
     train(agent=agent, env=env)
 
 
