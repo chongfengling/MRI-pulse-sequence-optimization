@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import time
 import matplotlib.pyplot as plt
 from utilities import *
@@ -42,6 +43,7 @@ class Env:
                 len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8
             )
         ] = 1
+        self.density_complex = self.density.astype(complex)
         if plot:
             plt.figure(figsize=(10, 6))
             plt.plot(self.x_axis, self.density, '-', label='object')
@@ -58,6 +60,7 @@ class Env:
         self.vec_spins = np.zeros((3, self.N))
         self.vec_spins[1, :] = 1
         self.env_name = env_name
+        self.T2 = args.T2
 
         # specify the action space
         if self.env_name == "Two-Constant-Gradient":
@@ -68,13 +71,12 @@ class Env:
                 low=self.action_low, high=self.action_high, size=7
             )
         elif self.env_name == "Two-Constant-Gradient-With_Slope":
-
-
             self.action_low = np.array([0.0, 0.0, 0.0, 0.0])
             self.action_high = np.array([1.0, 1.0, 1.0, 1.0])
             self.action_space = np.random.uniform(
                 low=self.action_low, high=self.action_high, size=4
             )
+            self.max_slew_rate = args.max_slew_rate
 
         else:
             raise ValueError("Invalid environment name.")
@@ -84,63 +86,79 @@ class Env:
         return np.random.rand(len(self.x_axis))
 
     def step(self, action, plot=False):
-        
+        (d1, d2, d3, d4, d5, d6, GValue) = action
+        # 1e-6 or 1e-5?
+        GValue = GValue * 1e-5 * 40
+        G1 = GValue * 1
+        G2 = GValue * (-1)
 
-        # action is an array of 7 variables (t1, t2, d1, d2, G1symbol, G2symbol, Gvalues)
-        # take an action and return the next state, reward, a boolean indicating if the episode is done and additional info
-
-        # calculate the gradient values
-        (t1, t2, d1, d2, G1symbol, G2symbol, Gvalue) = action
-        Gvalue = Gvalue * 1e-6
-        gamma_bar_G = self.gamma_bar * Gvalue * 1e-3
+        gamma_bar_G = self.gamma_bar * GValue * 1e-3
         delta_t = self.delta_k / gamma_bar_G
         Ts = self.FOV_k / gamma_bar_G  # ADC duration FIXED
         t_max = (
             1.5 * Ts - delta_t
         )  # maximum time (ms) (rephasing process is 2 times longer than dephasingprocess)
+
         t_axis = np.linspace(0, t_max, int(self.N * 1.5))
         G_values_array = np.zeros(len(t_axis))
-        # two gradient can be overlapped
-        # print(f't1: {t1}, t2: {t2}, d1: {d1}, d2: {d2}, G1symbol: {G1symbol}, G2symbol: {G2symbol}, Gvalue: {Gvalue}')
+
+        # d1: time for gradient to reach its maximum value (G1)
+        # d2: time for gradient to stay its minimum value (G1)
+        # d3: time for gradient to back to zero
+        # d4: time for gradient to reach its minimum value (G2)
+        # d5: time for gradient to stay its minimum value (G2)
+        # d6: time for gradient to back to zero
+        # sum of d1, d2, d3, d4, d5, d6 should be equal to 1
+        N_d1, N_d2, N_d3, N_d4, N_d5 = (
+            int(d1 * self.N * 1.5),
+            int(d2 * self.N * 1.5),
+            int(d3 * self.N * 1.5),
+            int(d4 * self.N * 1.5),
+            int(d5 * self.N * 1.5),
+        )
+        G_values_array[:N_d1] = np.linspace(0, G1, N_d1)
+        G_values_array[N_d1 : N_d1 + N_d2] = G1
+        G_values_array[N_d1 + N_d2 : N_d1 + N_d2 + N_d3] = np.linspace(G1, 0, N_d3)
+        G_values_array[N_d1 + N_d2 + N_d3 : N_d1 + N_d2 + N_d3 + N_d4] = np.linspace(
+            0, G2, N_d4
+        )
         G_values_array[
-            int(t1 * len(t_axis)) : int(t1 * len(t_axis) + d1 * len(t_axis))
-        ] += (G1symbol * Gvalue)
-        G_values_array[
-            int(t2 * len(t_axis)) : int(t2 * len(t_axis) + d2 * len(t_axis))
-        ] += (G2symbol * Gvalue)
+            N_d1 + N_d2 + N_d3 + N_d4 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5
+        ] = G2
+        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 :] = np.linspace(
+            G2, 0, int(self.N * 1.5) - N_d1 - N_d2 - N_d3 - N_d4 - N_d5
+        )
         k_traj = np.cumsum(G_values_array) * 1e-3
+
         if plot:
+            # if True:
             _, (ax1, ax2) = plt.subplots(2, sharex=True, figsize=(10, 6))
             ax1.plot(t_axis, G_values_array)
             ax1.set_ylabel('Gx (mT/m)')
-
             ax2.plot(t_axis, k_traj)
             ax2.set_ylabel('k (1/m)')
-
+            # ax1.legend()
             ax2.set_xticks(
                 [0, t_axis[int(self.N / 2) - 1], t_axis[int(self.N * 1.5) - 1]]
             )
             ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
-
             plt.show()
 
         # do relaxation
         # define larmor frequency w_G of spins during relaxation
         # shape = (number of time steps, number of sampling points)
         w_G = np.outer(G_values_array, self.x_axis) * self.gamma * 1e-3 + self.w_0
-
         res = multiple_Relaxation(
             self.vec_spins,
             m0=self.m0,
             w=0,
             w0=w_G,
             t1=1e10,
-            t2=1e10,
+            t2=self.T2,
             t=1.5 * Ts,
             steps=int(self.N * 1.5),
             axis='z',
         )
-
         store = []
         for i in range(2):
             tmp = res[
@@ -155,10 +173,15 @@ class Env:
         # plot the full signal
         signal_Mx = np.concatenate((Mx_1, Mx_2), axis=0)
         signal_My = np.concatenate((My_1, My_2), axis=0)
-        adc_signal = Mx_2 * 1 + 1j * My_2
+        adc_signal = Mx_2 * 1j + 1 * My_2
         re_density = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(adc_signal)))
         abs_re_density = np.abs(re_density)
-        mse = (np.linalg.norm(abs_re_density - self.density) ** 2) / len(self.density)
+
+        # reward has two components: the first is the MSE of two complex arrays, the second is the slew rate
+        # reward of mse < 0
+        mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
+        # reward of slew rate in the range of [0, 1]
+
         if plot:
             plt.plot(self.x_axis, abs_re_density, label='reconstruction')
             plt.plot(self.x_axis, self.density, label='original')
@@ -166,7 +189,7 @@ class Env:
             plt.show()
         # print(f'error (MSE) {mse}')
         info = None
-
+        # at this time use abs_re_density as the state
         return abs_re_density, -mse, False, info
 
     def render(self):
@@ -189,15 +212,16 @@ class ActorNetwork(nn.Module):
             nn.Linear(128, 32),
             nn.ReLU(),
         )
-
-        # Output layer
-        # rescale?
-        # self.output_layer = nn.Linear(32, action_space)
         self.output_layer = nn.Sequential(nn.Linear(32, action_space), nn.Sigmoid())
 
     def forward(self, state):
         tmp = self.fc_layers(state)
         out = self.output_layer(tmp)
+
+        # first 6 elements are summed to 1
+        softmax_out = F.softmax(out[:6], dim=0)
+        out = torch.cat((softmax_out, out[6:]), dim=0)
+
         # out = 0.9 * out + 0.01
         return out
 
@@ -311,6 +335,7 @@ class DPPG:
                 self.left_clip,
                 self.right_clip,
             )
+        action[:6] = np.exp(action[:6]) / np.sum(np.exp(action[:6]), axis=0)
 
         self.s_t = action
         return action
@@ -384,7 +409,14 @@ def parse_arguments():
         type=int,
         help='sampling points in x space (and k space, time space during ADC)',
     )
-    parser.add_argument('--seed', default=2023, type=int, help='seed')
+    parser.add_argument('--T2', default=1e2, type=float, help='T2 relaxation time')
+    parser.add_argument(
+        '--max_slew_rate',
+        default=150,
+        type=float,
+        help='max slew rate of gradient, defined as peak amplitude of gradient divided by rise time',
+    )
+    parser.add_argument('--seed', default=215, type=int, help='seed')
     parser.add_argument(
         '--state_space',
         default=32,
