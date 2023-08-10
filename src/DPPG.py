@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from utilities import *
 import argparse
 import random
+from datetime import datetime
+import os
 
 # action space: {t1:_, t3:_, d1:_, d2:_, G1:_, G2:_} 6 arrays.
 
@@ -407,6 +409,28 @@ class DPPG:
         soft_update(self.actor_target, self.actor, self.tau)
         soft_update(self.critic_target, self.critic, self.tau)
 
+    def save_model(self, args=None):
+        # save the model
+        current_datetime = datetime.now()
+        # Convert the month, day, hour, and minute to a string, excluding the year
+        datetime_string = f"{current_datetime.month}-{current_datetime.day}-{current_datetime.hour}-{current_datetime.minute:02}"
+
+        if not os.path.exists(f'src/Training/{datetime_string}'):
+            os.makedirs(f'src/Training/{datetime_string}')
+
+        path = f'src/Training/{datetime_string}/e{args.num_episode}_s{args.num_steps_per_ep}'
+
+        torch.save(self.actor.state_dict(), path + '_actor.pth')
+        torch.save(self.critic.state_dict(), path + '_critic.pth')
+        torch.save(self.actor_target.state_dict(), path + '_actor_target.pth')
+        torch.save(
+            self.critic_target.state_dict(),
+            path + '_critic_target.pth',
+        )
+
+    def load_model(self, path):
+        pass
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='DPPG_Two-Constant-Gradient')
@@ -583,6 +607,8 @@ def main():
                 plt.legend()
                 # plt.show()
         print(reward_record)
+
+        agent.save_model(args=args)
 
     train(agent=agent, env=env)
 
