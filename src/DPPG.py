@@ -162,12 +162,12 @@ class Env:
 
             store.append(tmp @ self.density)  # multiply by true density
 
-        Mx_1, My_1 = store[0][: int(self.N / 2)], store[1][: int(self.N / 2)]
+        # Mx_1, My_1 = store[0][: int(self.N / 2)], store[1][: int(self.N / 2)]
         Mx_2, My_2 = store[0][int(self.N / 2) :], store[1][int(self.N / 2) :]
 
         # plot the full signal
-        signal_Mx = np.concatenate((Mx_1, Mx_2), axis=0)
-        signal_My = np.concatenate((My_1, My_2), axis=0)
+        # signal_Mx = np.concatenate((Mx_1, Mx_2), axis=0)
+        # signal_My = np.concatenate((My_1, My_2), axis=0)
         adc_signal = Mx_2 * 1j + 1 * My_2
         re_density = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(adc_signal)))
         abs_re_density = np.abs(re_density)
@@ -205,19 +205,21 @@ class Env:
 class ActorNetwork(nn.Module):
     # Actor Network, generates action based on state
     # observation is the state
-    def __init__(self, state_space, action_space):
+    def __init__(self, state_space, action_space, args):
         super(ActorNetwork, self).__init__()
 
         # Fully-connected layers
         self.fc_layers = nn.Sequential(
-            nn.Linear(state_space, 512),
+            nn.Linear(state_space, args.a_hidden1),
             nn.ReLU(),
-            nn.Linear(512, 128),
+            nn.Linear(args.a_hidden1, args.a_hidden2),
             nn.ReLU(),
-            nn.Linear(128, 32),
+            nn.Linear(args.a_hidden2, args.a_hidden3),
             nn.ReLU(),
         )
-        self.output_layer = nn.Sequential(nn.Linear(32, action_space), nn.Sigmoid())
+        self.output_layer = nn.Sequential(
+            nn.Linear(args.a_hidden3, action_space), nn.Sigmoid()
+        )
 
     def forward(self, state):
         tmp = self.fc_layers(state)
@@ -233,26 +235,32 @@ class ActorNetwork(nn.Module):
 
 class CriticNetwork(nn.Module):
     # Critic Network, generates Q value based on (current?) state and action
-    def __init__(self, state_space, action_space):
+    def __init__(self, state_space, action_space, args):
         super(CriticNetwork, self).__init__()
 
         # state input stream
         self.state_stream = nn.Sequential(
-            nn.Linear(state_space, 128), nn.ReLU(), nn.Linear(128, 32), nn.ReLU()
+            nn.Linear(state_space, args.c_s_hidden1),
+            nn.ReLU(),
+            nn.Linear(args.c_s_hidden1, args.c_s_hidden2),
+            nn.ReLU(),
         )
 
         # action input stream
         self.action_stream = nn.Sequential(
-            nn.Linear(action_space, 16), nn.ReLU(), nn.Linear(16, 32), nn.ReLU()
+            nn.Linear(action_space, args.c_a_hidden1),
+            nn.ReLU(),
+            nn.Linear(args.c_a_hidden1, args.c_a_hidden2),
+            nn.ReLU(),
         )
 
         # combined layer
         self.combined_layer = nn.Sequential(
-            nn.Linear(32 * 2, 128),
+            nn.Linear(args.c_s_hidden2 + args.c_a_hidden2, args.c_combined_hidden1),
             nn.ReLU(),
-            nn.Linear(128, 256),
+            nn.Linear(args.c_combined_hidden1, args.c_combined_hidden2),
             nn.ReLU(),
-            nn.Linear(256, 1),
+            nn.Linear(args.c_combined_hidden2, 1),
         )
 
     def forward(self, state, action):
@@ -264,9 +272,9 @@ class CriticNetwork(nn.Module):
 
 
 class DPPG:
-    def __init__(self, state_space, action_space, env, args):
-        self.state_space = state_space
-        self.action_space = action_space
+    def __init__(self, env, args):
+        self.state_space = args.state_space
+        self.action_space = args.action_space
 
         self.env = env  #! necessary?
 
@@ -274,8 +282,8 @@ class DPPG:
         self.lr_a, self.lr_c = args.lr_a, args.lr_c
 
         # create Actor Network and its target network
-        self.actor = ActorNetwork(state_space, action_space)
-        self.actor_target = ActorNetwork(state_space, action_space)
+        self.actor = ActorNetwork(self.state_space, self.action_space, args)
+        self.actor_target = ActorNetwork(self.state_space, self.action_space, args)
         self.actor_optimizer = torch.optim.Adam(
             self.actor.parameters(), lr=self.lr_a
         )  #!
@@ -288,8 +296,8 @@ class DPPG:
         #     target_param.data.copy_(param.data)
 
         # create Critic Network and its target network
-        self.critic = CriticNetwork(state_space, action_space)
-        self.critic_target = CriticNetwork(state_space, action_space)
+        self.critic = CriticNetwork(self.state_space, self.action_space, args)
+        self.critic_target = CriticNetwork(self.state_space, self.action_space, args)
         self.critic_optimizer = torch.optim.Adam(
             self.critic.parameters(), lr=self.lr_c
         )  #!
@@ -555,9 +563,7 @@ def parse_arguments():
 def main():
     args = parse_arguments()
     env = Env(args=args, plot=False)
-    agent = DPPG(
-        state_space=args.state_space, action_space=args.action_space, env=env, args=args
-    )
+    agent = DPPG(env=env, args=args)
     env.make(args=args)
 
     def train(
@@ -601,8 +607,9 @@ def main():
                     )
                     reward_record.append(episode_reward)
 
-                # if plot:
-                if True:
+                if 0:
+                    # if True:
+
                     f, (ax1, ax2, ax3) = plt.subplots(3, sharex=False, figsize=(10, 6))
 
                     ax1.plot(env.t_axis, env.G_values_array)
@@ -611,14 +618,19 @@ def main():
                     ax2.set_ylabel('k (1/m)')
                     # ax1.legend()
                     ax2.set_xticks(
-                        [0, env.t_axis[int(env.N / 2) - 1], env.t_axis[int(env.N * 1.5) - 1]]
+                        [
+                            0,
+                            env.t_axis[int(env.N / 2) - 1],
+                            env.t_axis[int(env.N * 1.5) - 1],
+                        ]
                     )
                     ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
                     ax3.plot(env.x_axis, state, '-o', label=f'{i}, {j}')
                     ax3.plot(env.x_axis, env.density)
                     plt.legend()
+                    plt.close()
 
-                    plt.show()
+                    # plt.show()
         print(reward_record)
 
         agent.save_model(args=args)
