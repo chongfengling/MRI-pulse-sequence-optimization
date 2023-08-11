@@ -181,7 +181,7 @@ class Env:
         # reward has two components: the first is the MSE of two complex arrays, the second is the slew rate
         # reward of mse < 0
         mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
-        info = mse
+        info = -mse
         # print(f'error (MSE) {mse}') # 0.6704205526298735
         # reward of slew rate in the range of [-1 or 1] * factor
         N_slope = (
@@ -536,17 +536,17 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        '--lr_a', default=0.001, type=float, help='learning rate of actor network'
+        '--lr_a', default=0.0001, type=float, help='learning rate of actor network'
     )
     parser.add_argument(
-        '--lr_c', default=0.002, type=float, help='learning rate of critic network'
+        '--lr_c', default=0.001, type=float, help='learning rate of critic network'
     )
-
+    parser.add_argument('--warmup', default=256, type=int, help='warmup, no training')
     parser.add_argument(
-        '--memory_capacity', default=5000, type=int, help='memory capacity'
+        '--memory_capacity', default=500000, type=int, help='memory capacity'
     )
     parser.add_argument(
-        '--batch_size', default=512, type=int, help='minibatch size from memory'
+        '--batch_size', default=128, type=int, help='minibatch size from memory'
     )
 
     parser.add_argument(
@@ -559,9 +559,9 @@ def parse_arguments():
     parser.add_argument('--right_clip', default=0.99, type=float, help='right clip')
 
     parser.add_argument(
-        '--gamma', default=0.8, type=float, help='reward discount factor'
+        '--gamma', default=0.99, type=float, help='reward discount factor'
     ) # 0.8
-    parser.add_argument('--tau', default=0.01, type=float, help='soft update factor') #0.1
+    parser.add_argument('--tau', default=0.001, type=float, help='soft update factor') #0.1
 
     args = parser.parse_args()
 
@@ -605,11 +605,7 @@ def main():
                 agent.store_transition(state, action, reward, state_)
 
                 # update the network if the replay memory is full
-                if agent.mpointer > agent.memory_capacity:
-                    # break
-                    # print(
-                    #     f'update, mpointer = {agent.mpointer}, memory_capacity = {agent.memory_capacity}'
-                    # )
+                if agent.mpointer > args.warmup:
                     agent.update_network()
 
                 # output records
@@ -643,7 +639,7 @@ def main():
                     ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
                     ax3.plot(env.x_axis, state, '-o', label=f'{i}, {j}')
                     ax3.plot(env.x_axis, env.density)
-                    plt.title(f'{info}')
+                    plt.title(f'mse = {info}')
                     plt.legend()
                     plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
                     # plt.show()
