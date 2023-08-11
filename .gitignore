@@ -21,3 +21,6 @@ src/*.gif
 *.lof
 *.lot
 *.out
+
+src/Training/*
+

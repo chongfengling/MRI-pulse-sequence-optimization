@@ -82,12 +82,13 @@ class Env:
             raise ValueError("Invalid environment name.")
 
     def reset(self):
-        # reset the object and return the initial state
-        self.density = np.zeros(len(self.x_axis), dtype=int)
-        indices = np.random.choice(self.density.size, 30, replace=False)
-        self.density[indices[:15]] = 1
-        self.density[indices[15:]] = 2
-        self.density_complex = self.density.astype(complex)
+        #! reset the object and return the initial state
+        #! the object is not changed for this env
+        # self.density = np.zeros(len(self.x_axis), dtype=int)
+        # indices = np.random.choice(self.density.size, 30, replace=False)
+        # self.density[indices[:15]] = 1
+        # self.density[indices[15:]] = 2
+        # self.density_complex = self.density.astype(complex)
 
         return np.random.rand(len(self.x_axis))
 
@@ -105,8 +106,8 @@ class Env:
             1.5 * Ts - delta_t
         )  # maximum time (ms) (rephasing process is 2 times longer than dephasingprocess)
 
-        t_axis = np.linspace(0, t_max, int(self.N * 1.5))
-        G_values_array = np.zeros(len(t_axis))
+        self.t_axis = np.linspace(0, t_max, int(self.N * 1.5))
+        G_values_array = np.zeros(len(self.t_axis))
 
         # d1: time for gradient to reach its maximum value (G1)
         # d2: time for gradient to stay its minimum value (G1)
@@ -135,26 +136,13 @@ class Env:
         G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 :] = np.linspace(
             G2, 0, int(self.N * 1.5) - N_d1 - N_d2 - N_d3 - N_d4 - N_d5
         )
-        k_traj = np.cumsum(G_values_array) * 1e-3
-
-        if plot:
-            # if True:
-            _, (ax1, ax2) = plt.subplots(2, sharex=True, figsize=(10, 6))
-            ax1.plot(t_axis, G_values_array)
-            ax1.set_ylabel('Gx (mT/m)')
-            ax2.plot(t_axis, k_traj)
-            ax2.set_ylabel('k (1/m)')
-            # ax1.legend()
-            ax2.set_xticks(
-                [0, t_axis[int(self.N / 2) - 1], t_axis[int(self.N * 1.5) - 1]]
-            )
-            ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
-            plt.show()
+        self.G_values_array = G_values_array
+        self.k_traj = np.cumsum(G_values_array) * 1e-3
 
         # do relaxation
         # define larmor frequency w_G of spins during relaxation
         # shape = (number of time steps, number of sampling points)
-        w_G = np.outer(G_values_array, self.x_axis) * self.gamma * 1e-3 + self.w_0
+        w_G = np.outer(self.G_values_array, self.x_axis) * self.gamma * 1e-3 + self.w_0
         res = multiple_Relaxation(
             self.vec_spins,
             m0=self.m0,
@@ -612,10 +600,25 @@ def main():
                         )
                     )
                     reward_record.append(episode_reward)
-                plt.plot(env.x_axis, state, '-o', label=f'{i}, {j}')
-                plt.plot(env.x_axis, env.density)
-                plt.legend()
-                # plt.show()
+
+                # if plot:
+                if True:
+                    f, (ax1, ax2, ax3) = plt.subplots(3, sharex=False, figsize=(10, 6))
+
+                    ax1.plot(env.t_axis, env.G_values_array)
+                    ax1.set_ylabel('Gx (mT/m)')
+                    ax2.plot(env.t_axis, env.k_traj)
+                    ax2.set_ylabel('k (1/m)')
+                    # ax1.legend()
+                    ax2.set_xticks(
+                        [0, env.t_axis[int(env.N / 2) - 1], env.t_axis[int(env.N * 1.5) - 1]]
+                    )
+                    ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
+                    ax3.plot(env.x_axis, state, '-o', label=f'{i}, {j}')
+                    ax3.plot(env.x_axis, env.density)
+                    plt.legend()
+
+                    plt.show()
         print(reward_record)
 
         agent.save_model(args=args)
