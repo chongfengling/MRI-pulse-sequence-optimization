@@ -93,7 +93,7 @@ class Env:
         return np.random.rand(len(self.x_axis))
 
     def step(self, action, plot=False):
-        (d1, d2, d3, d4, d5, d6, GValue_01) = action
+        (d1, d2, d3, d4, d5, d6, d7, d8, GValue_01) = action
         # max gradient is 40 mT/m = 4e-5 T/mm
         GValue = GValue_01 * 1e-5 * 40
         G1 = GValue * 1
@@ -112,30 +112,41 @@ class Env:
         # d1: time for gradient to reach its maximum value (G1)
         # d2: time for gradient to stay its minimum value (G1)
         # d3: time for gradient to back to zero
-        # d4: time for gradient to reach its minimum value (G2)
-        # d5: time for gradient to stay its minimum value (G2)
-        # d6: time for gradient to back to zero
+        # d4: time for gradient to stay zero
+        # d5: time for gradient to reach its minimum value (G2)
+        # d6: time for gradient to stay its minimum value (G2)
+        # d7: time for gradient to back to zero
+        # d8: time for gradient to stay zero
         # sum of d1, d2, d3, d4, d5, d6 should be equal to 1
-        N_d1, N_d2, N_d3, N_d4, N_d5, N_d6 = (
+        N_d1, N_d2, N_d3, N_d4, N_d5, N_d6, N_d7, N_d8 = (
             int(d1 * self.N * 1.5),
             int(d2 * self.N * 1.5),
             int(d3 * self.N * 1.5),
             int(d4 * self.N * 1.5),
             int(d5 * self.N * 1.5),
             int(d6 * self.N * 1.5),
+            int(d7 * self.N * 1.5),
+            int(d8 * self.N * 1.5),
         )
+        # up to G1
         G_values_array[:N_d1] = np.linspace(0, G1, N_d1)
+        # stay G1
         G_values_array[N_d1 : N_d1 + N_d2] = G1
+        # down to 0
         G_values_array[N_d1 + N_d2 : N_d1 + N_d2 + N_d3] = np.linspace(G1, 0, N_d3)
-        G_values_array[N_d1 + N_d2 + N_d3 : N_d1 + N_d2 + N_d3 + N_d4] = np.linspace(
-            0, G2, N_d4
-        )
+        # stay 0
+        G_values_array[N_d1 + N_d2 + N_d3 : N_d1 + N_d2 + N_d3 + N_d4] = 0
+        # down to G2
         G_values_array[
             N_d1 + N_d2 + N_d3 + N_d4 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5
-        ] = G2
-        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 :] = np.linspace(
-            G2, 0, int(self.N * 1.5) - N_d1 - N_d2 - N_d3 - N_d4 - N_d5
-        )
+        ] = np.linspace(0, G2, N_d5)
+        # stay G2
+        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6] = G2
+        # up to 0
+        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6 + N_d7] = np.linspace(G2, 0, N_d7)
+        # stay 0
+        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6 + N_d7 : ] = 0
+        # store the G_values_array
         self.G_values_array = G_values_array
         # calculate k space trajectory
         self.k_traj = np.cumsum(G_values_array) * 1e-3
@@ -226,11 +237,10 @@ class ActorNetwork(nn.Module):
         tmp = self.fc_layers(state)
         out = self.output_layer(tmp)
 
-        # first 6 elements are summed to 1
-        softmax_out = F.softmax(out[:6], dim=0)
-        out = torch.cat((softmax_out, out[6:]), dim=0)
+        # first 8 elements (duration) are summed to 1
+        softmax_out = F.softmax(out[:8], dim=0)
+        out = torch.cat((softmax_out, out[8:]), dim=0)
 
-        # out = 0.9 * out + 0.01
         return out
 
 
@@ -349,7 +359,7 @@ class DPPG:
                 self.left_clip,
                 self.right_clip,
             )
-        action[:6] = np.exp(action[:6]) / np.sum(np.exp(action[:6]), axis=0)
+            action[:8] = np.exp(action[:8]) / np.sum(np.exp(action[:8]), axis=0)
 
         self.s_t = action
         return action
@@ -458,7 +468,7 @@ def parse_arguments():
     )
     parser.add_argument(
         '--action_space',
-        default=7,
+        default=9,
         type=int,
         help='action_space including t1, t3, d1, d2, G1symbol, G2symbol, Gvalue',
     )
