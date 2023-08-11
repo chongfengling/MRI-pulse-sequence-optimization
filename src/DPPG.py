@@ -18,21 +18,21 @@ class Env:
     def __init__(self, args, plot=False):
         # create the universal environment
         # x space (spatial space)
-        self.FOV_x = args.FOV_x  # field of view in x space
+        self.FOV_x = args.FOV_x  # field of view in x space (mm)
         self.N = (
             args.N  # sampling points in x space (and k space, time space during ADC)
         )
-        self.delta_x = self.FOV_x / self.N  # sampling interval in x space
+        self.delta_x = self.FOV_x / self.N  # sampling interval in x space, (mm)
         self.x_axis = np.linspace(
             -self.FOV_x / 2, self.FOV_x / 2 - self.delta_x, self.N
         )  # symmetric x space
         # k space (frequency space)
-        self.delta_k = 1 / self.FOV_x  # sampling interval in k space
-        self.FOV_k = self.delta_k * self.N  # field of view in k space
+        self.delta_k = 1 / self.FOV_x  # sampling interval in k space (1/mm)
+        self.FOV_k = self.delta_k * self.N  # field of view in k space (1/mm)
         self.k_axis = np.linspace(
             -self.FOV_k / 2, self.FOV_k / 2 - self.delta_k, self.N
         )  # symmetric k space
-        self.gamma = 2.68e8  # rad/s/T
+        self.gamma = 2.68e8  # rad/(s*T)
         self.gamma_bar = 0.5 * self.gamma / np.pi  # s^-1T^-1
         # t space (time space) based on G1 and G2
         # create object over x space
@@ -93,12 +93,12 @@ class Env:
         return np.random.rand(len(self.x_axis))
 
     def step(self, action, plot=False):
-        (d1, d2, d3, d4, d5, d6, GValue) = action
-        # 1e-6 or 1e-5?
-        GValue = GValue * 1e-5 * 40
+        (d1, d2, d3, d4, d5, d6, GValue_01) = action
+        # max gradient is 40 mT/m = 4e-5 T/mm
+        GValue = GValue_01 * 1e-5 * 40
         G1 = GValue * 1
         G2 = GValue * (-1)
-
+        # calculate the delta_t and total time based on max gradient value
         gamma_bar_G = self.gamma_bar * GValue * 1e-3
         delta_t = self.delta_k / gamma_bar_G
         Ts = self.FOV_k / gamma_bar_G  # ADC duration FIXED
@@ -107,8 +107,8 @@ class Env:
         )  # maximum time (ms) (rephasing process is 2 times longer than dephasingprocess)
 
         self.t_axis = np.linspace(0, t_max, int(self.N * 1.5))
+        # define gradient values over time
         G_values_array = np.zeros(len(self.t_axis))
-
         # d1: time for gradient to reach its maximum value (G1)
         # d2: time for gradient to stay its minimum value (G1)
         # d3: time for gradient to back to zero
@@ -137,12 +137,14 @@ class Env:
             G2, 0, int(self.N * 1.5) - N_d1 - N_d2 - N_d3 - N_d4 - N_d5
         )
         self.G_values_array = G_values_array
+        # calculate k space trajectory
         self.k_traj = np.cumsum(G_values_array) * 1e-3
 
         # do relaxation
         # define larmor frequency w_G of spins during relaxation
         # shape = (number of time steps, number of sampling points)
         w_G = np.outer(self.G_values_array, self.x_axis) * self.gamma * 1e-3 + self.w_0
+        # T1 relaxation is not considered as it does not affect the signal on the xy plane
         res = multiple_Relaxation(
             self.vec_spins,
             m0=self.m0,
@@ -165,7 +167,6 @@ class Env:
         # Mx_1, My_1 = store[0][: int(self.N / 2)], store[1][: int(self.N / 2)]
         Mx_2, My_2 = store[0][int(self.N / 2) :], store[1][int(self.N / 2) :]
 
-        # plot the full signal
         # signal_Mx = np.concatenate((Mx_1, Mx_2), axis=0)
         # signal_My = np.concatenate((My_1, My_2), axis=0)
         adc_signal = Mx_2 * 1j + 1 * My_2
@@ -438,12 +439,12 @@ def parse_arguments():
         type=int,
         help='sampling points in x space (and k space, time space during ADC)',
     )
-    parser.add_argument('--T2', default=1e2, type=float, help='T2 relaxation time')
+    parser.add_argument('--T2', default=1e2, type=float, help='T2 relaxation time in ms')
     parser.add_argument(
         '--max_slew_rate',
-        default=10,
+        default=2e-4,
         type=float,
-        help='max slew rate of gradient, defined as peak amplitude of gradient divided by rise time',
+        help='max slew rate of gradient in (T / (m * ms)), defined as peak amplitude of gradient divided by rise time',
     )
     parser.add_argument(
         '--slope_penalty_factor', default=0.4, type=float, help='slope penalty factor'
@@ -628,8 +629,10 @@ def main():
                     ax3.plot(env.x_axis, state, '-o', label=f'{i}, {j}')
                     ax3.plot(env.x_axis, env.density)
                     plt.legend()
-                    plt.close()
                     plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
+                    # plt.show()
+                    plt.close()
+                    # plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
 
         print(reward_record)
 
