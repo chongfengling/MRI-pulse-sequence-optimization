@@ -37,20 +37,14 @@ class Env:
         # t space (time space) based on G1 and G2
         # create object over x space
         self.density = np.zeros(len(self.x_axis))
-        self.density[
-            int(len(self.x_axis) / 4 + len(self.x_axis) / 8) : int(
-                len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8
-            )
-        ] = 1
+        # self.density[
+        #     int(len(self.x_axis) / 4 + len(self.x_axis) / 8) : int(
+        #         len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8
+        #     )
+        # ] = 1
+
+        self.density[int(len(self.x_axis)/8):int(len(self.x_axis)/4)] = 2
         self.density_complex = self.density.astype(complex)
-        if plot:
-            plt.figure(figsize=(10, 6))
-            plt.plot(self.x_axis, self.density, '-', label='object')
-            plt.legend()
-            plt.xlabel('x')
-            plt.ylabel('density')
-            plt.grid()
-            plt.show()
         # prepare for simulation
         # create spins after the rf pulse (lying on the y-axis)
         # assume the spins are lying on each sampling point over y-axis
@@ -187,26 +181,37 @@ class Env:
         # reward has two components: the first is the MSE of two complex arrays, the second is the slew rate
         # reward of mse < 0
         mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
+        info = mse
         # print(f'error (MSE) {mse}') # 0.6704205526298735
         # reward of slew rate in the range of [-1 or 1] * factor
         N_slope = (
             GValue / self.max_slew_rate
         ) / delta_t  # minimum sampling points of slew rate
         if min(N_d1, N_d3, N_d4, N_d6) < N_slope:  #
-            reward_slew_rate = -1
-        else:
             reward_slew_rate = 1
+        else:
+            reward_slew_rate = 5
 
-        reward = -1 * mse + reward_slew_rate * self.slope_penalty_factor
+        # reward = -1 * mse + reward_slew_rate * self.slope_penalty_factor
+
+        if mse < 0.1:
+            reward = 1
+        else:
+            reward = -mse
+        
+
+        if np.abs(mse) < 0.05 and reward_slew_rate == 0.1:
+            done = True
+        else:
+            done = False
 
         if plot:
             plt.plot(self.x_axis, abs_re_density, label='reconstruction')
             plt.plot(self.x_axis, self.density, label='original')
             plt.legend()
             plt.show()
-        info = None
         # at this time use abs_re_density as the state
-        return abs_re_density, reward, False, info
+        return abs_re_density, reward, done, info
 
     def render(self):
         # display the state (reconstructed density) and the object (true density) and gradients and k space trajectory
@@ -230,7 +235,7 @@ class ActorNetwork(nn.Module):
             nn.ReLU(),
         )
         self.output_layer = nn.Sequential(
-            nn.Linear(args.a_hidden3, action_space), nn.Sigmoid()
+            nn.Linear(args.a_hidden3, action_space)
         )
 
     def forward(self, state):
@@ -449,7 +454,7 @@ def parse_arguments():
         type=int,
         help='sampling points in x space (and k space, time space during ADC)',
     )
-    parser.add_argument('--T2', default=1e2, type=float, help='T2 relaxation time in ms')
+    parser.add_argument('--T2', default=3e2, type=float, help='T2 relaxation time in ms')
     parser.add_argument(
         '--max_slew_rate',
         default=2e-4,
@@ -457,7 +462,7 @@ def parse_arguments():
         help='max slew rate of gradient in (T / (m * ms)), defined as peak amplitude of gradient divided by rise time',
     )
     parser.add_argument(
-        '--slope_penalty_factor', default=0.4, type=float, help='slope penalty factor'
+        '--slope_penalty_factor', default=0, type=float, help='slope penalty factor'
     )
     parser.add_argument('--seed', default=215, type=int, help='seed')
     parser.add_argument(
@@ -474,12 +479,12 @@ def parse_arguments():
     )
     parser.add_argument(
         '--num_episode',
-        default=8,
+        default=16,
         type=int,
         help='number of episodes. Each episode initializes new random process and state',
     )
     parser.add_argument(
-        '--num_steps_per_ep', default=128, type=int, help='number of steps per episode'
+        '--num_steps_per_ep', default=4096, type=int, help='number of steps per episode'
     )
 
     parser.add_argument(
@@ -538,10 +543,10 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        '--memory_capacity', default=50, type=int, help='memory capacity'
+        '--memory_capacity', default=5000, type=int, help='memory capacity'
     )
     parser.add_argument(
-        '--batch_size', default=32, type=int, help='minibatch size from memory'
+        '--batch_size', default=512, type=int, help='minibatch size from memory'
     )
 
     parser.add_argument(
@@ -554,9 +559,9 @@ def parse_arguments():
     parser.add_argument('--right_clip', default=0.99, type=float, help='right clip')
 
     parser.add_argument(
-        '--gamma', default=0.9, type=float, help='reward discount factor'
-    )
-    parser.add_argument('--tau', default=0.01, type=float, help='soft update factor')
+        '--gamma', default=0.8, type=float, help='reward discount factor'
+    ) # 0.8
+    parser.add_argument('--tau', default=0.01, type=float, help='soft update factor') #0.1
 
     args = parser.parse_args()
 
@@ -610,7 +615,7 @@ def main():
                 # output records
                 state = state_
                 episode_reward += reward
-                if j == num_steps_per_ep - 1:
+                if j == num_steps_per_ep - 1 or done:
                     # if True:
                     print(
                         '\rEpisode: {}/{}  | Episode Reward: {:.4f}  | Running Time: {:.4f}'.format(
@@ -619,7 +624,7 @@ def main():
                     )
                     reward_record.append(episode_reward)
 
-                if not j % 32:
+                if not j % 128:
                     # if True:
                     _, (ax1, ax2, ax3) = plt.subplots(3, sharex=False, figsize=(10, 6))
 
@@ -638,11 +643,15 @@ def main():
                     ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
                     ax3.plot(env.x_axis, state, '-o', label=f'{i}, {j}')
                     ax3.plot(env.x_axis, env.density)
+                    plt.title(f'{info}')
                     plt.legend()
                     plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
                     # plt.show()
                     plt.close()
                     # plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
+
+                if done:
+                    break
 
         print(reward_record)
 
