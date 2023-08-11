@@ -411,16 +411,8 @@ class DPPG:
         soft_update(self.actor_target, self.actor, self.tau)
         soft_update(self.critic_target, self.critic, self.tau)
 
-    def save_model(self, args=None):
+    def save_model(self, path):
         # save the model
-        current_datetime = datetime.now()
-        # Convert the month, day, hour, and minute to a string, excluding the year
-        datetime_string = f"{current_datetime.month}-{current_datetime.day}-{current_datetime.hour}-{current_datetime.minute:02}"
-
-        if not os.path.exists(f'src/Training/{datetime_string}'):
-            os.makedirs(f'src/Training/{datetime_string}')
-
-        path = f'src/Training/{datetime_string}/e{args.num_episode}_s{args.num_steps_per_ep}'
 
         torch.save(self.actor.state_dict(), path + '_actor.pth')
         torch.save(self.critic.state_dict(), path + '_critic.pth')
@@ -570,6 +562,15 @@ def main():
         agent, env, num_episode=args.num_episode, num_steps_per_ep=args.num_steps_per_ep
     ):
         reward_record = []
+        current_datetime = datetime.now()
+        # Convert the month, day, hour, and minute to a string, excluding the year
+        datetime_string = f"{current_datetime.month}-{current_datetime.day}-{current_datetime.hour}-{current_datetime.minute:02}"
+
+        if not os.path.exists(f'src/Training/{datetime_string}'):
+            os.makedirs(f'src/Training/{datetime_string}')
+
+        path = f'src/Training/{datetime_string}/e{args.num_episode}_s{args.num_steps_per_ep}'
+        
         for i in range(num_episode):
             # reset the environment
             state = env.reset()
@@ -607,10 +608,9 @@ def main():
                     )
                     reward_record.append(episode_reward)
 
-                if 0:
+                if not j % 32:
                     # if True:
-
-                    f, (ax1, ax2, ax3) = plt.subplots(3, sharex=False, figsize=(10, 6))
+                    _, (ax1, ax2, ax3) = plt.subplots(3, sharex=False, figsize=(10, 6))
 
                     ax1.plot(env.t_axis, env.G_values_array)
                     ax1.set_ylabel('Gx (mT/m)')
@@ -629,11 +629,11 @@ def main():
                     ax3.plot(env.x_axis, env.density)
                     plt.legend()
                     plt.close()
+                    plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
 
-                    # plt.show()
         print(reward_record)
 
-        agent.save_model(args=args)
+        agent.save_model(path = path)
 
     train(agent=agent, env=env)
 
