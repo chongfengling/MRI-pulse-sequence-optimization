@@ -26,6 +26,11 @@ def soft_update(target, source, tau):
     for target_param, param in zip(target.parameters(), source.parameters()):
         target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
 
+def mse_of_two_complex_nparrays(c1, c2):
+    assert c1.shape == c2.shape, 'The shapes of two complex arrays are not equal.'
+    mse = (np.linalg.norm(c1 - c2) ** 2) / len(c1)
+    return mse
+
 
 def rotation(vectors, angle, axis):
     """Rotates m isochronism vectors (located at the origin) about axis by some angle in 3-D space. When looking down from the above aixs and angle > 0, the precession of vectors is clockwise.

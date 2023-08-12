@@ -84,7 +84,7 @@ class Env:
         # self.density[indices[15:]] = 2
         # self.density_complex = self.density.astype(complex)
 
-        return np.random.rand(len(self.x_axis))
+        return np.random.rand(len(self.x_axis) * 2)
 
     def step(self, action, plot=False):
         (d1, d2, d3, d4, d5, d6, d7, d8, GValue_01) = action
@@ -192,11 +192,12 @@ class Env:
         adc_signal = Mx_2 * 1j + 1 * My_2
         re_density = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(adc_signal)))
         abs_re_density = np.abs(re_density)
-
+        
+        r_i_re_density = np.concatenate((np.real(re_density), np.imag(re_density)), axis=0)
         # reward has two components: the first is the MSE of two complex arrays, the second is the slew rate
         # reward of mse < 0
         mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
-        info = mse
+        info = -mse
         # print(f'error (MSE) {mse}') # 0.6704205526298735
 
         # reward of slew rate in the range of [-1 or 1] * factor
@@ -221,7 +222,7 @@ class Env:
             plt.legend()
             plt.show()
         # at this time use abs_re_density as the state
-        return abs_re_density, reward, done, info
+        return r_i_re_density, reward, done, info
 
     def render(self):
         # display the state (reconstructed density) and the object (true density) and gradients and k space trajectory
@@ -480,7 +481,7 @@ def parse_arguments():
     parser.add_argument('--seed', default=215, type=int, help='seed')
     parser.add_argument(
         '--state_space',
-        default=32,
+        default=32 * 2,
         type=int,
         help='state_space including density of objects',
     )
@@ -549,17 +550,17 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        '--lr_a', default=0.001, type=float, help='learning rate of actor network'
+        '--lr_a', default=0.0001, type=float, help='learning rate of actor network'
     )
     parser.add_argument(
-        '--lr_c', default=0.002, type=float, help='learning rate of critic network'
+        '--lr_c', default=0.001, type=float, help='learning rate of critic network'
     )
-
+    parser.add_argument('--warmup', default=256, type=int, help='warmup, no training')
     parser.add_argument(
-        '--memory_capacity', default=5000, type=int, help='memory capacity'
+        '--memory_capacity', default=500000, type=int, help='memory capacity'
     )
     parser.add_argument(
-        '--batch_size', default=512, type=int, help='minibatch size from memory'
+        '--batch_size', default=128, type=int, help='minibatch size from memory'
     )
 
     parser.add_argument(
@@ -572,11 +573,9 @@ def parse_arguments():
     parser.add_argument('--right_clip', default=0.99, type=float, help='right clip')
 
     parser.add_argument(
-        '--gamma', default=0.8, type=float, help='reward discount factor'
-    )  # 0.8
-    parser.add_argument(
-        '--tau', default=0.01, type=float, help='soft update factor'
-    )  # 0.1
+        '--gamma', default=0.9, type=float, help='reward discount factor'
+    ) # 0.8
+    parser.add_argument('--tau', default=0.01, type=float, help='soft update factor') #0.1
 
     args = parser.parse_args()
 
@@ -620,11 +619,7 @@ def main():
                 agent.store_transition(state, action, reward, state_, done)
 
                 # update the network if the replay memory is full
-                if agent.mpointer > agent.memory_capacity:
-                    # break
-                    # print(
-                    #     f'update, mpointer = {agent.mpointer}, memory_capacity = {agent.memory_capacity}'
-                    # )
+                if agent.mpointer > args.warmup:
                     agent.update_network()
 
                 # output records
@@ -634,19 +629,19 @@ def main():
                     # if True:
                     print(
                         '\rEpisode: {}/{}  | Episode Reward: {:.4f}  | Running Time: {:.4f}'.format(
-                            i, num_episode, episode_reward, time.time() - t1
+                            i+1, num_episode, episode_reward, time.time() - t1
                         )
                     )
                     reward_record.append(episode_reward)
 
                 if not j % 128:
                     # if True:
-                    _, (ax1, ax2, ax3) = plt.subplots(3, sharex=False, figsize=(10, 6))
+                    _, (ax1, ax2, ax3, ax4) = plt.subplots(4, sharex=False, figsize=(10, 6))
 
                     ax1.plot(env.t_axis, env.G_values_array)
-                    ax1.set_ylabel('Gx (mT/m)')
+                    ax1.set_ylabel('Gx (T/mm)')
                     ax2.plot(env.t_axis, env.k_traj)
-                    ax2.set_ylabel('k (1/m)')
+                    ax2.set_ylabel('k (1/mm)')
                     # ax1.legend()
                     ax2.set_xticks(
                         [
@@ -656,14 +651,19 @@ def main():
                         ]
                     )
                     ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
-                    ax3.plot(env.x_axis, state, '-o', label=f'{i}, {j}')
-                    ax3.plot(env.x_axis, env.density)
-                    plt.title(f'{info}')
-                    plt.legend()
-                    plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300)
+                    ax3.plot(env.x_axis, state[:int(len(state_)/2)], '-o', label='real')
+                    ax3.plot(env.x_axis, state[int(len(state_)/2):], '-*', label='imag')
+                    ax3.plot(env.x_axis, env.density, 'b-', label='object_real')
+                    ax3.plot(env.x_axis, np.zeros(len(env.x_axis)), 'k-', label='object_imag')
+                    ax3.legend()
+                    ax4.plot(env.x_axis, env.density, '-', label='object')
+                    ax4.plot(env.x_axis, np.abs(state[:int(len(state_)/2)] + 1j * state[int(len(state_)/2)]), '-o', label='reconstruction')
+                    ax1.set_title(f'i_{i}_j_{j}_mse = {info}')
+                    ax4.legend()
+                    plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
                     # plt.show()
                     plt.close()
-                    # plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300)
+                    # plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
 
                 if done:
                     break
