@@ -135,7 +135,7 @@ def single_Relaxation(vector, m0, w, w0, t1, t2, t, axis):
     return vector_t
 
 
-def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
+def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t_axis, steps, axis):
     """relaxation process of a set of vectors in a 3-D environment. See more: Bloch Equation
 
     Parameters
@@ -166,7 +166,7 @@ def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
 
     """
     (_, num_vectors) = vectors.shape
-    delta_time = t / steps
+    # delta_time = t / steps
     assert w0.shape[0] == steps
     assert w0.shape[1] == int(num_vectors)
 
@@ -186,7 +186,7 @@ def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
                     # w0=w0[j],
                     t1=t1,
                     t2=t2,
-                    t=delta_time,
+                    t=t_axis[i+1] - t_axis[i],
                     axis=axis,
                 )
             )
