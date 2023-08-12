@@ -135,11 +135,26 @@ class Env:
             N_d1 + N_d2 + N_d3 + N_d4 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5
         ] = np.linspace(0, G2, N_d5)
         # stay G2
-        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6] = G2
+        G_values_array[
+            N_d1 + N_d2 + N_d3 + N_d4 + N_d5 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6
+        ] = G2
         # up to 0
-        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6 + N_d7] = np.linspace(G2, 0, N_d7)
+        G_values_array[
+            N_d1
+            + N_d2
+            + N_d3
+            + N_d4
+            + N_d5
+            + N_d6 : N_d1
+            + N_d2
+            + N_d3
+            + N_d4
+            + N_d5
+            + N_d6
+            + N_d7
+        ] = np.linspace(G2, 0, N_d7)
         # stay 0
-        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6 + N_d7 : ] = 0
+        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6 + N_d7 :] = 0
         # store the G_values_array
         self.G_values_array = G_values_array
         # calculate k space trajectory
@@ -183,27 +198,22 @@ class Env:
         mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
         info = mse
         # print(f'error (MSE) {mse}') # 0.6704205526298735
+
         # reward of slew rate in the range of [-1 or 1] * factor
-        N_slope = (
-            GValue / self.max_slew_rate
-        ) / delta_t  # minimum sampling points of slew rate
-        if min(N_d1, N_d3, N_d4, N_d6) < N_slope:  #
-            reward_slew_rate = 1
-        else:
-            reward_slew_rate = 5
 
-        # reward = -1 * mse + reward_slew_rate * self.slope_penalty_factor
+        # calculate the slew rate
+        sr_1, sr_2, sr_3, sr_4 = (GValue / (delta_t * N_d1), GValue / (delta_t * N_d3), GValue / (delta_t * N_d4), GValue / (delta_t * N_d6))
 
-        if mse < 0.1:
-            reward = 1
+        if (
+            max(sr_1, sr_2, sr_3, sr_4) > self.max_slew_rate
+        ):  # unacceptable slew rate, fail for this episode
+            # reward_slew_rate = 1
+            print(f'max slew rate exceeded: {max(sr_1, sr_2, sr_3, sr_4)}, GValue: {GValue}, delta_t: {delta_t}, N_d1: {N_d1}, N_d3: {N_d3}, N_d4: {N_d4}, N_d6: {N_d6}')
+            done = 1.0
         else:
-            reward = -mse
-        
-
-        if np.abs(mse) < 0.05 and reward_slew_rate == 0.1:
-            done = True
-        else:
-            done = False
+            # reward_slew_rate = 5
+            done = 0.0
+        reward = -mse
 
         if plot:
             plt.plot(self.x_axis, abs_re_density, label='reconstruction')
@@ -234,9 +244,7 @@ class ActorNetwork(nn.Module):
             nn.Linear(args.a_hidden2, args.a_hidden3),
             nn.ReLU(),
         )
-        self.output_layer = nn.Sequential(
-            nn.Linear(args.a_hidden3, action_space)
-        )
+        self.output_layer = nn.Sequential(nn.Linear(args.a_hidden3, action_space))
 
     def forward(self, state):
         tmp = self.fc_layers(state)
@@ -330,9 +338,9 @@ class DPPG:
         # initialize replay buffer
         self.memory_capacity = args.memory_capacity
         self.batch_size = args.batch_size
-        # store one current states, one action, one reward, one next state
+        # store one current states, one action, one reward, one next state, one done
         self.memory = np.zeros(
-            (self.memory_capacity, self.state_space * 2 + self.action_space + 1),
+            (self.memory_capacity, self.state_space * 2 + self.action_space + 2),
             dtype=np.float32,
         )
         self.mpointer = 0  # memory pointer
@@ -369,7 +377,7 @@ class DPPG:
         self.s_t = action
         return action
 
-    def store_transition(self, state, action, reward, state_):
+    def store_transition(self, state, action, reward, state_, done):
         # store the transition in the replay buffer
 
         transition = np.hstack(
@@ -378,6 +386,7 @@ class DPPG:
                 action.astype(np.float32),
                 [reward],
                 state_.astype(np.float32),
+                [done],
             )
         )
 
@@ -399,16 +408,19 @@ class DPPG:
             batch[:, self.state_space : self.state_space + self.action_space]
         )
         # ? scale the reward to small value?
-        batch_reward = batch[:, -self.state_space - 1 : -self.state_space]
-        batch_state_ = to_tensor(batch[:, -self.state_space :])
+        batch_reward = batch[:, -self.state_space - 2 : -self.state_space -1]
+        batch_state_ = to_tensor(batch[:, -self.state_space -1 : -1])
+        batch_done = batch[:, -1:]
 
         # prepare for the target q batch
-        with torch.no_grad():
-            q_target_batch = self.critic_target(
-                batch_state_, self.actor_target(batch_state_)
-            )
+        q_target_batch = self.critic_target(
+            batch_state_, self.actor_target(batch_state_)
+        )
 
-        y = batch_reward + self.gamma * to_numpy(q_target_batch)
+        # if game is over (done = 0.0), no value for the next state's Q-value
+        # y is the target Q-value
+        y = batch_reward + self.gamma * to_numpy(q_target_batch) * batch_done
+        # calculate the current Q-value
         q_batch = self.critic(batch_state, batch_action)
         # calculate the value loss
         value_loss = self.criterion(q_batch, to_tensor(y))
@@ -418,8 +430,8 @@ class DPPG:
         self.critic_optimizer.step()
 
         # update the actor network
-        self.actor.zero_grad()
         policy_loss = -self.critic(batch_state, self.actor(batch_state)).mean()
+        self.actor.zero_grad()
         policy_loss.backward()
         self.actor_optimizer.step()
 
@@ -429,7 +441,6 @@ class DPPG:
 
     def save_model(self, path):
         # save the model
-
         torch.save(self.actor.state_dict(), path + '_actor.pth')
         torch.save(self.critic.state_dict(), path + '_critic.pth')
         torch.save(self.actor_target.state_dict(), path + '_actor_target.pth')
@@ -454,7 +465,9 @@ def parse_arguments():
         type=int,
         help='sampling points in x space (and k space, time space during ADC)',
     )
-    parser.add_argument('--T2', default=3e2, type=float, help='T2 relaxation time in ms')
+    parser.add_argument(
+        '--T2', default=3e2, type=float, help='T2 relaxation time in ms'
+    )
     parser.add_argument(
         '--max_slew_rate',
         default=2e-4,
@@ -551,7 +564,7 @@ def parse_arguments():
 
     parser.add_argument(
         '--exploration_var',
-        default=0.1,
+        default=0.01,
         type=float,
         help='exploration variance in random process',
     )
@@ -560,8 +573,10 @@ def parse_arguments():
 
     parser.add_argument(
         '--gamma', default=0.8, type=float, help='reward discount factor'
-    ) # 0.8
-    parser.add_argument('--tau', default=0.01, type=float, help='soft update factor') #0.1
+    )  # 0.8
+    parser.add_argument(
+        '--tau', default=0.01, type=float, help='soft update factor'
+    )  # 0.1
 
     args = parser.parse_args()
 
@@ -586,7 +601,7 @@ def main():
             os.makedirs(f'src/Training/{datetime_string}')
 
         path = f'src/Training/{datetime_string}/e{args.num_episode}_s{args.num_steps_per_ep}'
-        
+
         for i in range(num_episode):
             # reset the environment
             state = env.reset()
@@ -602,7 +617,7 @@ def main():
                 # ? value of reward should be scaled or not. Yes but not here
                 state_, reward, done, info = env.step(action)
                 # store the transition
-                agent.store_transition(state, action, reward, state_)
+                agent.store_transition(state, action, reward, state_, done)
 
                 # update the network if the replay memory is full
                 if agent.mpointer > agent.memory_capacity:
@@ -645,17 +660,17 @@ def main():
                     ax3.plot(env.x_axis, env.density)
                     plt.title(f'{info}')
                     plt.legend()
-                    plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
+                    plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300)
                     # plt.show()
                     plt.close()
-                    # plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
+                    # plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300)
 
                 if done:
                     break
 
         print(reward_record)
 
-        agent.save_model(path = path)
+        agent.save_model(path=path)
 
     train(agent=agent, env=env)
 
