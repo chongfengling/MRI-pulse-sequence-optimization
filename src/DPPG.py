@@ -87,14 +87,16 @@ class Env:
         return np.random.rand(len(self.x_axis) * 2)
 
     def step(self, action, plot=False):
-        (d1, d2, d3, d4, d5, d6, d7, d8, GValue_01) = action
+        # (d1, d2, d3, d4, d5, d6, d7, d8, GValue_01) = action
+        (alpha, beta, GValue_01) = action
         # max gradient is 40 mT/m = 4e-5 T/mm
         GValue = GValue_01 * 1e-5 * 40
         G1 = GValue * 1
         G2 = GValue * (-1)
         # calculate the delta_t and total time based on max gradient value
         gamma_bar_G = self.gamma_bar * GValue * 1e-3
-        delta_t = self.delta_k / gamma_bar_G
+        delta_t = self.delta_k / gamma_bar_G # Fixed
+
         Ts = self.FOV_k / gamma_bar_G  # ADC duration FIXED
         t_max = (
             1.5 * Ts - delta_t
@@ -103,58 +105,22 @@ class Env:
         self.t_axis = np.linspace(0, t_max, int(self.N * 1.5))
         # define gradient values over time
         G_values_array = np.zeros(len(self.t_axis))
-        # d1: time for gradient to reach its maximum value (G1)
-        # d2: time for gradient to stay its minimum value (G1)
-        # d3: time for gradient to back to zero
-        # d4: time for gradient to stay zero
-        # d5: time for gradient to reach its minimum value (G2)
-        # d6: time for gradient to stay its minimum value (G2)
-        # d7: time for gradient to back to zero
-        # d8: time for gradient to stay zero
-        # sum of d1, d2, d3, d4, d5, d6 should be equal to 1
-        N_d1, N_d2, N_d3, N_d4, N_d5, N_d6, N_d7, N_d8 = (
-            int(d1 * self.N * 1.5),
-            int(d2 * self.N * 1.5),
-            int(d3 * self.N * 1.5),
-            int(d4 * self.N * 1.5),
-            int(d5 * self.N * 1.5),
-            int(d6 * self.N * 1.5),
-            int(d7 * self.N * 1.5),
-            int(d8 * self.N * 1.5),
-        )
-        # up to G1
-        G_values_array[:N_d1] = np.linspace(0, G1, N_d1)
-        # stay G1
-        G_values_array[N_d1 : N_d1 + N_d2] = G1
-        # down to 0
-        G_values_array[N_d1 + N_d2 : N_d1 + N_d2 + N_d3] = np.linspace(G1, 0, N_d3)
-        # stay 0
-        G_values_array[N_d1 + N_d2 + N_d3 : N_d1 + N_d2 + N_d3 + N_d4] = 0
-        # down to G2
-        G_values_array[
-            N_d1 + N_d2 + N_d3 + N_d4 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5
-        ] = np.linspace(0, G2, N_d5)
-        # stay G2
-        G_values_array[
-            N_d1 + N_d2 + N_d3 + N_d4 + N_d5 : N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6
-        ] = G2
-        # up to 0
-        G_values_array[
-            N_d1
-            + N_d2
-            + N_d3
-            + N_d4
-            + N_d5
-            + N_d6 : N_d1
-            + N_d2
-            + N_d3
-            + N_d4
-            + N_d5
-            + N_d6
-            + N_d7
-        ] = np.linspace(G2, 0, N_d7)
-        # stay 0
-        G_values_array[N_d1 + N_d2 + N_d3 + N_d4 + N_d5 + N_d6 + N_d7 :] = 0
+
+        N_G1 = nearest_even(alpha * self.N * 0.5)
+        N_G2 = nearest_even(beta * self.N)
+        N_G1_up = int(0.5 * (self.N * 0.5 - N_G1))
+        N_G2_up = int(0.5 * (self.N - N_G2))
+        assert N_G1 + N_G2 + N_G1_up * 2 + N_G2_up * 2 == self.N * 1.5
+
+        G_values_array[:N_G1_up] = np.linspace(0, G1, N_G1_up)
+        G_values_array[N_G1_up : N_G1_up + N_G1] = G1
+        G_values_array[N_G1_up + N_G1 : N_G1_up + N_G1 + N_G1_up] = np.linspace(G1, 0, N_G1_up)
+
+        G_values_array[N_G1_up + N_G1 + N_G1_up : N_G1_up + N_G1 + N_G1_up + N_G2_up] = np.linspace(0, G2, N_G2_up)
+        G_values_array[N_G1_up + N_G1 + N_G1_up + N_G2_up : N_G1_up + N_G1 + N_G1_up + N_G2_up + N_G2] = G2
+        G_values_array[N_G1_up + N_G1 + N_G1_up + N_G2_up + N_G2 : N_G1_up + N_G1 + N_G1_up + N_G2_up + N_G2 + N_G2_up] = np.linspace(G2, 0, N_G2_up)
+
+
         # store the G_values_array
         self.G_values_array = G_values_array
         # calculate k space trajectory
@@ -172,7 +138,7 @@ class Env:
             w0=w_G,
             t1=1e10,
             t2=self.T2,
-            t=1.5 * Ts,
+            t_axis=self.t_axis,
             steps=int(self.N * 1.5),
             axis='z',
         )
@@ -203,13 +169,13 @@ class Env:
         # reward of slew rate in the range of [-1 or 1] * factor
 
         # calculate the slew rate
-        sr_1, sr_2, sr_3, sr_4 = (GValue / (delta_t * N_d1), GValue / (delta_t * N_d3), GValue / (delta_t * N_d4), GValue / (delta_t * N_d6))
+        sr_1, sr_2 = (GValue / (delta_t * N_G1_up), GValue / (delta_t * N_G2_up))
 
         if (
-            max(sr_1, sr_2, sr_3, sr_4) > self.max_slew_rate
+            max(sr_1, sr_2) > self.max_slew_rate
         ):  # unacceptable slew rate, fail for this episode
             # reward_slew_rate = 1
-            print(f'max slew rate exceeded: {max(sr_1, sr_2, sr_3, sr_4)}, GValue: {GValue}, delta_t: {delta_t}, N_d1: {N_d1}, N_d3: {N_d3}, N_d4: {N_d4}, N_d6: {N_d6}')
+            print(f'max slew rate exceeded: {max(sr_1, sr_2)}, GValue: {GValue}, delta_t: {delta_t}')
             done = 1.0
         else:
             # reward_slew_rate = 5
@@ -245,15 +211,11 @@ class ActorNetwork(nn.Module):
             nn.Linear(args.a_hidden2, args.a_hidden3),
             nn.ReLU(),
         )
-        self.output_layer = nn.Sequential(nn.Linear(args.a_hidden3, action_space))
+        self.output_layer = nn.Sequential(nn.Linear(args.a_hidden3, action_space), nn.Sigmoid())
 
     def forward(self, state):
         tmp = self.fc_layers(state)
         out = self.output_layer(tmp)
-
-        # first 8 elements (duration) are summed to 1
-        softmax_out = F.softmax(out[:8], dim=0)
-        out = torch.cat((softmax_out, out[8:]), dim=0)
 
         return out
 
@@ -467,7 +429,7 @@ def parse_arguments():
         help='sampling points in x space (and k space, time space during ADC)',
     )
     parser.add_argument(
-        '--T2', default=3e2, type=float, help='T2 relaxation time in ms'
+        '--T2', default=3e1, type=float, help='T2 relaxation time in ms'
     )
     parser.add_argument(
         '--max_slew_rate',
@@ -487,7 +449,7 @@ def parse_arguments():
     )
     parser.add_argument(
         '--action_space',
-        default=9,
+        default=3,
         type=int,
         help='action_space including t1, t3, d1, d2, G1symbol, G2symbol, Gvalue',
     )
@@ -565,7 +527,7 @@ def parse_arguments():
 
     parser.add_argument(
         '--exploration_var',
-        default=0.01,
+        default=0.8,
         type=float,
         help='exploration variance in random process',
     )

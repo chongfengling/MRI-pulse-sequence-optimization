@@ -6,6 +6,9 @@ from torch.autograd import Variable
 USE_CUDA = torch.cuda.is_available()
 FLOAT = torch.cuda.FloatTensor if USE_CUDA else torch.FloatTensor
 
+def nearest_even(n):
+    return int(round(n)) + (1 if round(n) % 2 else 0) if n - round(n) >= 0 else int(round(n)) - (1 if round(n) % 2 else 0)
+
 
 def to_numpy(var):
     return var.cpu().data.numpy() if USE_CUDA else var.data.numpy()
