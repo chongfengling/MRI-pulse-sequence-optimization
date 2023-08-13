@@ -154,24 +154,29 @@ class Env:
         # reward of mse < 0
         mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
         info = -mse
-        # print(f'error (MSE) {mse}') # 0.6704205526298735
-
+        reward = -mse
         # reward of slew rate in the range of [-1 or 1] * factor
 
         # calculate the slew rate
         sr_1, sr_2 = (GValue / (delta_t * N_G1_up), GValue / (delta_t * N_G2_up))
 
         if (
-            max(sr_1, sr_2) > self.max_slew_rate
+            max(sr_1, sr_2) > self.max_slew_rate * 4
         ):  # unacceptable slew rate, fail for this episode
             # reward_slew_rate = 1
-            print(f'max slew rate exceeded: {max(sr_1, sr_2)}, GValue: {GValue}, delta_t: {delta_t}')
-            done = 1.0
+            # print(f'max slew rate exceeded: {max(sr_1, sr_2)}, GValue: {GValue}, delta_t: {delta_t}')
+            reward += -1
+            # done = 1.0
         else:
             # reward_slew_rate = 5
-            done = 0.0
-        reward = -mse
+            # done = 0.0
+            reward += 0.5
 
+        experienced_mean = -2.18
+        experienced_std = 0.62
+        reward = (reward -  experienced_mean) / experienced_std
+
+        done = 0.0
         if plot:
             plt.plot(self.x_axis, abs_re_density, label='reconstruction')
             plt.plot(self.x_axis, self.density, label='original')
@@ -559,6 +564,7 @@ def main():
             # record time and current reward in this episode
             t1 = time.time()
             episode_reward = 0
+            reward_set = []
 
             for j in range(num_steps_per_ep):
                 # return an action based on the current state
@@ -577,6 +583,7 @@ def main():
                 # output records
                 state = state_
                 episode_reward += reward
+                reward_set.append(reward)
                 if j == num_steps_per_ep - 1 or done:
                     # if True:
                     print(
@@ -592,6 +599,8 @@ def main():
 
                     ax1.plot(env.t_axis, env.G_values_array)
                     ax1.set_ylabel('Gx (T/mm)')
+                    # ax1.set_ylim([[-1, 1] * 1e-5 * 40])
+                    ax1.set_ylim([-1e-5 * 40, 1e-5 * 40])
                     ax2.plot(env.t_axis, env.k_traj)
                     ax2.set_ylabel('k (1/mm)')
                     # ax1.legend()
@@ -609,8 +618,8 @@ def main():
                     ax3.plot(env.x_axis, np.zeros(len(env.x_axis)), 'k-', label='object_imag')
                     ax3.legend()
                     ax4.plot(env.x_axis, env.density, '-', label='object')
-                    ax4.plot(env.x_axis, np.abs(state[:int(len(state_)/2)] + 1j * state[int(len(state_)/2)]), '-o', label='reconstruction')
-                    ax1.set_title(f'i_{i}_j_{j}_mse = {info}')
+                    ax4.plot(env.x_axis, np.abs(state[:int(len(state_)/2)] + 1j * state[int(len(state_)/2):]), '-o', label='reconstruction')
+                    ax1.set_title(f'i_{i}_j_{j}_mse = {info}, reward = {reward}')
                     ax4.legend()
                     plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
                     # plt.show()
@@ -619,8 +628,7 @@ def main():
 
                 if done:
                     break
-
-        print(reward_record)
+            print(f'mean reward: {np.mean(reward_set)}, std: {np.std(reward_set)}')
 
         agent.save_model(path=path)
 
