@@ -35,14 +35,8 @@ class Env:
         self.gamma = 2.68e8  # rad/(s*T)
         self.gamma_bar = 0.5 * self.gamma / np.pi  # s^-1T^-1
         # t space (time space) based on G1 and G2
-        # create object over x space
+        # create object over x space. one env, one object
         self.density = np.zeros(len(self.x_axis))
-        # self.density[
-        #     int(len(self.x_axis) / 4 + len(self.x_axis) / 8) : int(
-        #         len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8
-        #     )
-        # ] = 1
-
         self.density[int(len(self.x_axis)/8):int(len(self.x_axis)/4)] = 2
         self.density_complex = self.density.astype(complex)
         # prepare for simulation
@@ -147,19 +141,15 @@ class Env:
             tmp = res[
                 i, :, :
             ].squeeze()  # shape: (number of steps, number of sampling points)
-
             store.append(tmp @ self.density)  # multiply by true density
-
-        # Mx_1, My_1 = store[0][: int(self.N / 2)], store[1][: int(self.N / 2)]
+        # signal during ADC
         Mx_2, My_2 = store[0][int(self.N / 2) :], store[1][int(self.N / 2) :]
-
-        # signal_Mx = np.concatenate((Mx_1, Mx_2), axis=0)
-        # signal_My = np.concatenate((My_1, My_2), axis=0)
         adc_signal = Mx_2 * 1j + 1 * My_2
         re_density = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(adc_signal)))
+        re_density = np.real(re_density) * 1j + np.imag(re_density)
         abs_re_density = np.abs(re_density)
-        
         r_i_re_density = np.concatenate((np.real(re_density), np.imag(re_density)), axis=0)
+
         # reward has two components: the first is the MSE of two complex arrays, the second is the slew rate
         # reward of mse < 0
         mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
