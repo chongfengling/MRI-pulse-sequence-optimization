@@ -177,24 +177,26 @@ class Env:
 
         # calculate the slew rate
         sr_1, sr_2 = (GValue / (delta_t * N_G1_up), GValue / (delta_t * N_G2_up))
+        done = 0.0
 
         if (
-            max(sr_1, sr_2) > self.max_slew_rate * 4
+            max(sr_1, sr_2) > self.max_slew_rate * 10
         ):  # unacceptable slew rate, fail for this episode
             # reward_slew_rate = 1
             # print(f'max slew rate exceeded: {max(sr_1, sr_2)}, GValue: {GValue}, delta_t: {delta_t}')
             reward += -1
-            # done = 1.0
+            done = 1.0
+        elif max(sr_1, sr_2) > self.max_slew_rate * 4:
+            reward += -0.5
         else:
             # reward_slew_rate = 5
             # done = 0.0
             reward += 0.5
-
+        #! ?
         experienced_mean = -2.18
         experienced_std = 0.62
-        reward = (reward -  experienced_mean) / experienced_std
+        reward = (reward - experienced_mean) / experienced_std
 
-        done = 0.0
         if plot:
             plt.plot(self.x_axis, abs_re_density, label='reconstruction')
             plt.plot(self.x_axis, self.density, label='original')
