@@ -34,6 +34,33 @@ def mse_of_two_complex_nparrays(c1, c2):
     mse = (np.linalg.norm(c1 - c2) ** 2) / len(c1)
     return mse
 
+def show_state(env, path, state, i, j, info, reward):
+    _, (ax1, ax2, ax3, ax4) = plt.subplots(4, sharex=False, figsize=(10, 6))
+    ax1.plot(env.t_axis, env.G_values_array)
+    ax1.set_ylabel('Gx (T/mm)')
+    ax1.set_ylim([-1e-5 * 40, 1e-5 * 40])
+    ax2.plot(env.t_axis, env.k_traj)
+    # ax1.legend()
+    ax2.set_xticks(
+        [
+            0,
+            env.t_axis[int(env.N / 2) - 1],
+            env.t_axis[int(env.N * 1.5) - 1],
+        ]
+    )
+    ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
+    ax3.plot(env.x_axis, state[:int(len(state)/2)], '-o', label='real')
+    ax3.plot(env.x_axis, state[int(len(state)/2):], '-*', label='imag')
+    ax3.plot(env.x_axis, env.density, 'b-', label='object_real')
+    ax3.plot(env.x_axis, np.zeros(len(env.x_axis)), 'k-', label='object_imag')
+    ax3.legend()
+    ax4.plot(env.x_axis, env.density, '-', label='object')
+    ax4.plot(env.x_axis, np.abs(state[:int(len(state)/2)] + 1j * state[int(len(state)/2):]),
+    '-o', label='reconstruction')
+    ax1.set_title(f'i_{i}_j_{j}_mse = {info}, reward = {reward}')
+    ax4.legend()
+    plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
+    plt.close()
 
 def rotation(vectors, angle, axis):
     """Rotates m isochronism vectors (located at the origin) about axis by some angle in 3-D space. When looking down from the above aixs and angle > 0, the precession of vectors is clockwise.
