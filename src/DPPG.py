@@ -37,7 +37,7 @@ class Env:
         # t space (time space) based on G1 and G2
         # create object over x space. one env, one object
         self.density = np.zeros(len(self.x_axis))
-        self.density[int(len(self.x_axis)/8):int(len(self.x_axis)/4)] = 2
+        self.density[int(len(self.x_axis) / 8) : int(len(self.x_axis) / 4)] = 2
         self.density_complex = self.density.astype(complex)
         # prepare for simulation
         # create spins after the rf pulse (lying on the y-axis)
@@ -70,14 +70,7 @@ class Env:
             raise ValueError("Invalid environment name.")
 
     def reset(self):
-        #! reset the object and return the initial state
-        #! the object is not changed for this env
-        # self.density = np.zeros(len(self.x_axis), dtype=int)
-        # indices = np.random.choice(self.density.size, 30, replace=False)
-        # self.density[indices[:15]] = 1
-        # self.density[indices[15:]] = 2
-        # self.density_complex = self.density.astype(complex)
-
+        # reset and return a new state (reconstructed density with two components: real and imaginary)
         return np.random.rand(len(self.x_axis) * 2)
 
     def step(self, action, plot=False):
@@ -89,7 +82,7 @@ class Env:
         G2 = GValue * (-1)
         # calculate the delta_t and total time based on max gradient value
         gamma_bar_G = self.gamma_bar * GValue * 1e-3
-        delta_t = self.delta_k / gamma_bar_G # Fixed
+        delta_t = self.delta_k / gamma_bar_G  # Fixed
 
         Ts = self.FOV_k / gamma_bar_G  # ADC duration FIXED
         t_max = (
@@ -108,12 +101,35 @@ class Env:
 
         G_values_array[:N_G1_up] = np.linspace(0, G1, N_G1_up)
         G_values_array[N_G1_up : N_G1_up + N_G1] = G1
-        G_values_array[N_G1_up + N_G1 : N_G1_up + N_G1 + N_G1_up] = np.linspace(G1, 0, N_G1_up)
+        G_values_array[N_G1_up + N_G1 : N_G1_up + N_G1 + N_G1_up] = np.linspace(
+            G1, 0, N_G1_up
+        )
 
-        G_values_array[N_G1_up + N_G1 + N_G1_up : N_G1_up + N_G1 + N_G1_up + N_G2_up] = np.linspace(0, G2, N_G2_up)
-        G_values_array[N_G1_up + N_G1 + N_G1_up + N_G2_up : N_G1_up + N_G1 + N_G1_up + N_G2_up + N_G2] = G2
-        G_values_array[N_G1_up + N_G1 + N_G1_up + N_G2_up + N_G2 : N_G1_up + N_G1 + N_G1_up + N_G2_up + N_G2 + N_G2_up] = np.linspace(G2, 0, N_G2_up)
-
+        G_values_array[
+            N_G1_up + N_G1 + N_G1_up : N_G1_up + N_G1 + N_G1_up + N_G2_up
+        ] = np.linspace(0, G2, N_G2_up)
+        G_values_array[
+            N_G1_up
+            + N_G1
+            + N_G1_up
+            + N_G2_up : N_G1_up
+            + N_G1
+            + N_G1_up
+            + N_G2_up
+            + N_G2
+        ] = G2
+        G_values_array[
+            N_G1_up
+            + N_G1
+            + N_G1_up
+            + N_G2_up
+            + N_G2 : N_G1_up
+            + N_G1
+            + N_G1_up
+            + N_G2_up
+            + N_G2
+            + N_G2_up
+        ] = np.linspace(G2, 0, N_G2_up)
 
         # store the G_values_array
         self.G_values_array = G_values_array
@@ -148,7 +164,9 @@ class Env:
         re_density = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(adc_signal)))
         re_density = np.real(re_density) * 1j + np.imag(re_density)
         abs_re_density = np.abs(re_density)
-        r_i_re_density = np.concatenate((np.real(re_density), np.imag(re_density)), axis=0)
+        r_i_re_density = np.concatenate(
+            (np.real(re_density), np.imag(re_density)), axis=0
+        )
 
         # reward has two components: the first is the MSE of two complex arrays, the second is the slew rate
         # reward of mse < 0
@@ -206,7 +224,9 @@ class ActorNetwork(nn.Module):
             nn.Linear(args.a_hidden2, args.a_hidden3),
             nn.ReLU(),
         )
-        self.output_layer = nn.Sequential(nn.Linear(args.a_hidden3, action_space), nn.Sigmoid())
+        self.output_layer = nn.Sequential(
+            nn.Linear(args.a_hidden3, action_space), nn.Sigmoid()
+        )
 
     def forward(self, state):
         tmp = self.fc_layers(state)
@@ -366,8 +386,8 @@ class DPPG:
             batch[:, self.state_space : self.state_space + self.action_space]
         )
         # ? scale the reward to small value?
-        batch_reward = batch[:, -self.state_space - 2 : -self.state_space -1]
-        batch_state_ = to_tensor(batch[:, -self.state_space -1 : -1])
+        batch_reward = batch[:, -self.state_space - 2 : -self.state_space - 1]
+        batch_state_ = to_tensor(batch[:, -self.state_space - 1 : -1])
         batch_done = batch[:, -1:]
 
         # prepare for the target q batch
@@ -408,7 +428,9 @@ class DPPG:
         )
 
     def load_model(self, path):
-        pass
+        # load the model
+        self.actor.load_state_dict(torch.load(path + '_actor.pth'))
+        self.critic.load_state_dict(torch.load(path + '_critic.pth'))
 
 
 def parse_arguments():
@@ -531,8 +553,10 @@ def parse_arguments():
 
     parser.add_argument(
         '--gamma', default=0.9, type=float, help='reward discount factor'
-    ) # 0.8
-    parser.add_argument('--tau', default=0.01, type=float, help='soft update factor') #0.1
+    )  # 0.8
+    parser.add_argument(
+        '--tau', default=0.01, type=float, help='soft update factor'
+    )  # 0.1
 
     args = parser.parse_args()
 
