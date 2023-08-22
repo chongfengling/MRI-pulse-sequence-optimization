@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from utilities import *
+import argparse
 
 class Env:
     # Environment, generates state and reward based on action
@@ -21,12 +22,13 @@ class Env:
         self.k_axis = np.linspace(
             -self.FOV_k / 2, self.FOV_k / 2 - self.delta_k, self.N
         )  # symmetric k space
-        self.gamma = 2.68e8  # rad/(s*T)
-        self.gamma_bar = 0.5 * self.gamma / np.pi  # s^-1T^-1
+        self.gamma = .68e5 # rad/ms/T
+        self.gamma_bar = 0.5 * self.gamma / np.pi  # ms^-1T^-1
         # t space (time space) based on G1 and G2
         # create object over x space. one env, one object
         self.density = np.zeros(len(self.x_axis))
-        self.density[int(len(self.x_axis) / 8) : int(len(self.x_axis) / 4)] = 2
+        # self.density[int(len(self.x_axis) * 0.4) : int(len(self.x_axis) * 0.6)] = 2
+        self.density[int(len(self.x_axis) / 4 + len(self.x_axis) / 8): int(len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8)] = 2
         self.density_complex = self.density.astype(complex)
         # prepare for simulation
         # create spins after the rf pulse (lying on the y-axis)
@@ -66,7 +68,9 @@ class Env:
         # reset and return a new state (reconstructed density with two components: real and imaginary)
         return np.random.rand(len(self.x_axis) * 2)
 
-    def step(self, action, plot=False):
+    def step(self, action, plot=False, info=0):
+        # info: used to measure how mse changes before and after the step. Here is the previous mse
+
         # (d1, d2, d3, d4, d5, d6, d7, d8, GValue_01) = action
         (alpha, beta, GValue_01) = action
         # max gradient is 40 mT/m = 4e-5 T/mm
@@ -74,13 +78,13 @@ class Env:
         G1 = GValue * 1
         G2 = GValue * (-1)
         # calculate the delta_t and total time based on max gradient value
-        gamma_bar_G = self.gamma_bar * GValue * 1e-3
-        delta_t = self.delta_k / gamma_bar_G  # Fixed
+        gamma_bar_G = self.gamma_bar * GValue
+        delta_t = self.delta_k / gamma_bar_G  # Fixed ms
 
         Ts = self.FOV_k / gamma_bar_G  # ADC duration FIXED
         t_max = (
             1.5 * Ts - delta_t
-        )  # maximum time (ms) (rephasing process is 2 times longer than dephasingprocess)
+        )  # maximum time (ms) (rephasing process is 2 times longer than dephasing process)
 
         self.t_axis = np.linspace(0, t_max, int(self.N * 1.5))
         # define gradient values over time
@@ -127,12 +131,12 @@ class Env:
         # store the G_values_array
         self.G_values_array = G_values_array
         # calculate k space trajectory
-        self.k_traj = np.cumsum(G_values_array) * 1e-3
+        self.k_traj = np.cumsum(G_values_array)
 
         # do relaxation
         # define larmor frequency w_G of spins during relaxation
         # shape = (number of time steps, number of sampling points)
-        w_G = np.outer(self.G_values_array, self.x_axis) * self.gamma * 1e-3 + self.w_0
+        w_G = np.outer(self.G_values_array, self.x_axis) * self.gamma + self.w_0
         # T1 relaxation is not considered as it does not affect the signal on the xy plane
         res = multiple_Relaxation(
             self.vec_spins,
@@ -153,7 +157,7 @@ class Env:
             store.append(tmp @ self.density)  # multiply by true density
         # signal during ADC
         Mx_2, My_2 = store[0][int(self.N / 2) :], store[1][int(self.N / 2) :]
-        adc_signal = Mx_2 * (-1j) +  My_2
+        adc_signal = Mx_2 * (-1j) + My_2
         re_density = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(adc_signal)))
         abs_re_density = np.abs(re_density)
         r_i_re_density = np.concatenate(
@@ -163,31 +167,22 @@ class Env:
         # reward has two components: the first is the MSE of two complex arrays, the second is the slew rate
         # reward of mse < 0
         mse = mse_of_two_complex_nparrays(re_density, self.density_complex)
-        info = -mse
-        reward = -mse
-        # reward of slew rate in the range of [-1 or 1] * factor
+
+        # positive reward if mse decreases
+        reward = info - mse
+        # record the current mse
+        info = mse
 
         # calculate the slew rate
         sr_1, sr_2 = (GValue / (delta_t * N_G1_up), GValue / (delta_t * N_G2_up))
         done = 0.0
 
         if (
-            max(sr_1, sr_2) > self.max_slew_rate * 10
+            max(sr_1, sr_2) > self.max_slew_rate * 100
         ):  # unacceptable slew rate, fail for this episode
-            # reward_slew_rate = 1
             # print(f'max slew rate exceeded: {max(sr_1, sr_2)}, GValue: {GValue}, delta_t: {delta_t}')
-            reward += -1
+            # reward += -1
             done = 1.0
-        elif max(sr_1, sr_2) > self.max_slew_rate * 4:
-            reward += -0.5
-        else:
-            # reward_slew_rate = 5
-            # done = 0.0
-            reward += 0.5
-        #! ?
-        experienced_mean = -2.18
-        experienced_std = 0.62
-        reward = (reward - experienced_mean) / experienced_std
 
         if plot:
             plt.plot(self.x_axis, abs_re_density, label='reconstruction')
@@ -201,3 +196,154 @@ class Env:
         # display the state (reconstructed density) and the object (true density) and gradients and k space trajectory
 
         pass
+
+    def example(self):
+        _, _, _, _ = self.step(action=[1,1,1], plot=True)
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='DPPG_Two-Constant-Gradient')
+    parser.add_argument(
+        '--env', default='Two-Constant-Gradient-With_Slope', type=str, help='env'
+    )
+    parser.add_argument('--FOV_x', default=32, type=int, help='FOV_x')
+    parser.add_argument(
+        '--N',
+        default=32,
+        type=int,
+        help='sampling points in x space (and k space, time space during ADC)',
+    )
+    parser.add_argument(
+        '--T2', default=3e1, type=float, help='T2 relaxation time in ms'
+    )
+    parser.add_argument(
+        '--max_slew_rate',
+        default=2e-4,
+        type=float,
+        help='max slew rate of gradient in (T / (m * ms)), defined as peak amplitude of gradient divided by rise time',
+    )
+    parser.add_argument(
+        '--slope_penalty_factor', default=0, type=float, help='slope penalty factor'
+    )
+    parser.add_argument('--seed', default=215, type=int, help='seed')
+    parser.add_argument(
+        '--state_space',
+        default=32 * 2,
+        type=int,
+        help='state_space including density of objects',
+    )
+    parser.add_argument(
+        '--action_space',
+        default=3,
+        type=int,
+        help='action_space including t1, t3, d1, d2, G1symbol, G2symbol, Gvalue',
+    )
+    parser.add_argument(
+        '--num_episode',
+        default=300,
+        type=int,
+        help='number of episodes. Each episode initializes new random process and state',
+    )
+    parser.add_argument(
+        '--num_steps_per_ep', default=1024, type=int, help='number of steps per episode'
+    )
+    parser.add_argument(
+        '--num_episode_testing',
+        default=64,
+        type=int,
+        help='number of episodes for testing. Each episode initializes new random process and state',
+    )
+    parser.add_argument(
+        '--num_steps_per_ep_testing', default=1024, type=int, help='number of steps per episode for testing'
+    )
+    parser.add_argument(
+        '--a_hidden1', default=512, type=int, help='hidden layer 1 in actor network'
+    )
+    parser.add_argument(
+        '--a_hidden2', default=128, type=int, help='hidden layer 2 in actor network'
+    )
+    parser.add_argument(
+        '--a_hidden3', default=32, type=int, help='hidden layer 3 in actor network'
+    )
+
+    parser.add_argument(
+        '--c_s_hidden1',
+        default=128,
+        type=int,
+        help='hidden layer 1 in critic network for state input stream',
+    )
+    parser.add_argument(
+        '--c_s_hidden2',
+        default=32,
+        type=int,
+        help='hidden layer 2 in critic network for state input stream',
+    )
+    parser.add_argument(
+        '--c_a_hidden1',
+        default=16,
+        type=int,
+        help='hidden layer 1 in critic network for action input stream',
+    )
+    parser.add_argument(
+        '--c_a_hidden2',
+        default=32,
+        type=int,
+        help='hidden layer 2 in critic network for action input stream',
+    )
+
+    parser.add_argument(
+        '--c_combined_hidden1',
+        default=128,
+        type=int,
+        help='hidden layer 1 in critic network for combined network',
+    )
+    parser.add_argument(
+        '--c_combined_hidden2',
+        default=256,
+        type=int,
+        help='hidden layer 2 in critic network for combined network',
+    )
+
+    parser.add_argument(
+        '--lr_a', default=0.0001, type=float, help='learning rate of actor network'
+    )
+    parser.add_argument(
+        '--lr_c', default=0.001, type=float, help='learning rate of critic network'
+    )
+    parser.add_argument('--warmup', default=256, type=int, help='warmup, no training')
+    parser.add_argument(
+        '--memory_capacity', default=10000, type=int, help='memory capacity'
+    )
+    parser.add_argument(
+        '--batch_size', default=128, type=int, help='minibatch size from memory'
+    )
+
+    parser.add_argument(
+        '--exploration_var',
+        default=0.8,
+        type=float,
+        help='exploration variance in random process',
+    )
+    parser.add_argument('--left_clip', default=0.01, type=float, help='left clip')
+    parser.add_argument('--right_clip', default=0.99, type=float, help='right clip')
+
+    parser.add_argument(
+        '--gamma', default=0.9, type=float, help='reward discount factor'
+    )  # 0.8
+    parser.add_argument(
+        '--tau', default=0.01, type=float, help='soft update factor'
+    )  # 0.1
+
+    args = parser.parse_args()
+
+    return args
+
+
+
+args = parse_arguments()
+a = Env(args)
+a.example()
+
+
+# hard constrain
+# reward: change of mse

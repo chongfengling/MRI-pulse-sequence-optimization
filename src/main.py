@@ -21,7 +21,7 @@ def parse_arguments():
         help='sampling points in x space (and k space, time space during ADC)',
     )
     parser.add_argument(
-        '--T2', default=3e0, type=float, help='T2 relaxation time in ms'
+        '--T2', default=3e1, type=float, help='T2 relaxation time in ms'
     )
     parser.add_argument(
         '--max_slew_rate',
@@ -47,14 +47,22 @@ def parse_arguments():
     )
     parser.add_argument(
         '--num_episode',
-        default=4,
+        default=300,
         type=int,
         help='number of episodes. Each episode initializes new random process and state',
     )
     parser.add_argument(
-        '--num_steps_per_ep', default=4096, type=int, help='number of steps per episode'
+        '--num_steps_per_ep', default=1024, type=int, help='number of steps per episode'
     )
-
+    parser.add_argument(
+        '--num_episode_testing',
+        default=64,
+        type=int,
+        help='number of episodes for testing. Each episode initializes new random process and state',
+    )
+    parser.add_argument(
+        '--num_steps_per_ep_testing', default=1024, type=int, help='number of steps per episode for testing'
+    )
     parser.add_argument(
         '--a_hidden1', default=512, type=int, help='hidden layer 1 in actor network'
     )
@@ -111,7 +119,7 @@ def parse_arguments():
     )
     parser.add_argument('--warmup', default=256, type=int, help='warmup, no training')
     parser.add_argument(
-        '--memory_capacity', default=500000, type=int, help='memory capacity'
+        '--memory_capacity', default=10000, type=int, help='memory capacity'
     )
     parser.add_argument(
         '--batch_size', default=128, type=int, help='minibatch size from memory'
@@ -138,82 +146,113 @@ def parse_arguments():
     return args
 
 def train(
-    agent, env, num_episode, num_steps_per_ep, args, path, plot=False, save=False
+    agent, env, num_episode, num_steps_per_ep, args, path, plot=False, save=False, debug=False, test=False
 ):
-    reward_record = []
+    training_records = []
     path = f'{path}_e{num_episode}_s{num_steps_per_ep}'
     for i in range(num_episode):
-        # reset the environment
+        # reset the environment, the state (reconstructed density with two components: real and imaginary are initialized in the environment)
         state = env.reset()
+        state_signal = state[: len(env.x_axis)] + 1j * state[len(env.x_axis) :]
         # record time and current reward in this episode
         t1 = time.time()
-        episode_reward = 0
-        reward_set = []
+        episode_reward = []
+        # info records the mse in the last step of current episode. initialized as 0
+        info = mse_of_two_complex_nparrays(state_signal, env.density_complex)
         for j in range(num_steps_per_ep):
             # return an action based on the current state
             action = agent.select_action(state, exploration_noise=True)
             # interact with the environment
-            state_, reward, done, info = env.step(action)
+            state_, reward, done, info_ = env.step(action, info=info)
             # store the transition
             agent.store_transition(state, action, reward, state_, done)
-            # update the network if the replay memory is full
+            # update the network if the replay memory is full. if not, no update of networks
             if agent.mpointer > args.warmup:
                 agent.update_network()
-            # output records
+            # update the state: s_t = s_t+1
             state = state_
-            episode_reward += reward
-            reward_set.append(reward)
+            info = info_
+            # record the total reward in this episode
+            episode_reward.append(reward)
+            # if the episode is finished or the maximum number of steps is reached, print the episode reward and running time
+            # sum of episode reward is the total reward of this episode
             if j == num_steps_per_ep - 1 or done:
-                # if True:
                 print(
-                    '\rEpisode: {}/{}  | Episode Reward: {:.4f}  | Running Time: {:.4f}'.format(
-                        i+1, num_episode, episode_reward, time.time() - t1
+                    '\rEpisode: {}/{}  | Episode Reward: {:.4f} | Running Time: {:.4f}'.format(
+                        i+1, num_episode, np.sum(episode_reward), time.time() - t1
                     )
                 )
-                reward_record.append(episode_reward)
+                # each episode has its array-like reward
+                training_records.append(episode_reward)
                 break
-            if not j % 128:
-                show_state(env, path, state, i, j, info, reward)
+            # plot the state and action at some steps if needed
+            if not j % 128 and not i % 32 and debug:
+                show_state(env, path, state, i, j, info_, reward)
 
-        print(f'mean reward: {np.mean(reward_set)}, std: {np.std(reward_set)}')
+    if plot:
+        _, ax1 = plt.subplots(1, 1, figsize=(10, 6))
+        training_records = np.concatenate(training_records).reshape(-1)
+        ax1.plot(range(len(training_records)), training_records)
+        ax1.set_xlabel('step')
+        ax1.set_ylabel('reward') 
+        plt.savefig(f'{path}_training_records.png', dpi=300)
+
     agent.save_model(path=path)
 
-def test(agent, model_path, env, debug=False, save=True):
+def test(agent, model_path, env, num_episode, num_steps_per_ep, debug=False, save=True):
     # agent = torch.load(model_path)
     agent.load_model(model_path)
     agent.is_training = False
     agent.eval()
     
-    num_episode = 10
-    num_steps_per_ep = 4096
+    num_episode = 64
+    num_steps_per_ep = 2048
     # store the reward of each episode during testing
-    test_result = []
+    test_records = []
+    # recommended action
+    recommended_action = []
 
     for i in range(num_episode):
+        #for  one episode, output action has a smallest mse
+        best_action_mse = 1e10
+        best_action =  None
         state = env.reset()
+        state_signal = state[: len(env.x_axis)] + 1j * state[len(env.x_axis) :]
+        info = mse_of_two_complex_nparrays(state_signal, env.density_complex)
         done = False
-        episode_reward = 0
+        episode_reward = []
         for j in range(num_steps_per_ep):
             action = agent.select_action(state, exploration_noise=False)
-            state_, reward, done, info = env.step(action)
+            state_, reward, done, info_ = env.step(action, info=info)
+            # if the mse of the current action is smaller than the best mse, update the best mse and best action
+            if info_ < best_action_mse:
+                best_action_mse = info_
+                best_action = action
+                best_info = np.concatenate((best_action, [best_action_mse]))
             state = state_
-            episode_reward += reward
+            info = info_
+            episode_reward.append(reward)
             if j == num_steps_per_ep - 1 or done:
                 break
-        if debug:
-            print(f'episode {i}, episode reward: {episode_reward}')
-        test_result.append(episode_reward)
+        # store the best action in this episode
+        recommended_action.append(best_info)
+        if debug: 
+            print(f'episode {i}, episode reward: {np.sum(episode_reward)}')
+        test_records.append(episode_reward)
+    np.savetxt(f'{model_path}_recommended_action.txt', recommended_action, delimiter=',')
+
     if save:
         _, ax1 = plt.subplots(1, figsize=(10, 6))
-        ax1.plot(range(len(test_result)), test_result)
+        test_records = np.concatenate(test_records).reshape(-1)
+        ax1.plot(range(len(test_records)), test_records)
         ax1.set_xlabel('episode')
         ax1.set_ylabel('Average Reward')
-        ax1.set_title(f'Test Result: mean_reward = {np.mean(test_result)}')
-        plt.savefig(f'{model_path}_test.png', dpi=300)
+        ax1.set_title(f'Test Result: mean_reward = {np.mean(test_records)}')
+        plt.savefig(f'{model_path}_testing_records.png', dpi=300)
         plt.close()
 
     if debug:
-        print(f'Testing result: mean_reward = {np.mean(test_result)}')
+        print(f'Testing result: mean_reward = {np.mean(test_records)}')
 
 
 def main():
@@ -222,16 +261,17 @@ def main():
     datetime_string = f"{current_datetime.month}-{current_datetime.day}-{current_datetime.hour}{current_datetime.minute:02}"
     if not os.path.exists(f'src/Training/{datetime_string}'):
         os.makedirs(f'src/Training/{datetime_string}')
-    # path = f'src/Training/{datetime_string}/'
-    path = 'src/Training/8-13-18-30/'
+    path = f'src/Training/{datetime_string}/'
+    # path = 'src/Training/8-13-18-30/'
 
     args = parse_arguments()
     env = Env(args=args, plot=False)
     agent = DDPG(env=env, args=args)
     env.make(args=args)
-    train(agent=agent, env=env, num_episode=args.num_episode, num_steps_per_ep=args.num_steps_per_ep, args=args, path=path, plot=False, save=True)
-    path = f'{path}_e{args.num_episode}_s{args.num_steps_per_ep}'
-    test(agent=agent, model_path=path, env=env, debug=True, save=True)
+    train(agent=agent, env=env, num_episode=args.num_episode, num_steps_per_ep=args.num_steps_per_ep, args=args, path=path, plot=True, save=True, debug=True)
+    
+    model_path = f'{path}_e{args.num_episode}_s{args.num_steps_per_ep}'
+    test(agent=agent, model_path=model_path, env=env, debug=True, save=True, num_episode=args.num_episode_testing, num_steps_per_ep=args.num_steps_per_ep_testing)
 
 
 if __name__ == "__main__":
