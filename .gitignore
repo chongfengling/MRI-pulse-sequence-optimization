@@ -24,3 +24,6 @@ src/*.gif
 
 src/Training/*
 
+!src/Training/obj1
+!src/Training/obj2
+
