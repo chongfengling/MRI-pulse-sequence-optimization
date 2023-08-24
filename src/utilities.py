@@ -1,6 +1,81 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
+from torch.autograd import Variable
 
+USE_CUDA = torch.cuda.is_available()
+FLOAT = torch.cuda.FloatTensor if USE_CUDA else torch.FloatTensor
+
+def nearest_even(n):
+    return int(round(n)) + (1 if round(n) % 2 else 0) if n - round(n) >= 0 else int(round(n)) - (1 if round(n) % 2 else 0)
+
+
+def to_numpy(var):
+    return var.cpu().data.numpy() if USE_CUDA else var.data.numpy()
+
+
+def to_tensor(ndarray, volatile=False, requires_grad=False, dtype=FLOAT):
+    return Variable(
+        torch.from_numpy(ndarray), volatile=volatile, requires_grad=requires_grad
+    ).type(dtype)
+
+
+def hard_update(target, source):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(param.data)
+
+
+def soft_update(target, source, tau):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+
+def mse_of_two_complex_nparrays(c1, c2):
+    assert c1.shape == c2.shape, 'The shapes of two complex arrays are not equal.'
+    mse = (np.linalg.norm(c1 - c2) ** 2) / len(c1)
+    return mse
+
+def show_state(env, path, state, i, j, info, reward):
+    _, (ax1, ax2, ax3, ax4) = plt.subplots(4, sharex=False, figsize=(10, 6))
+    ax1.plot(env.t_axis, env.G_values_array)
+    ax1.set_ylabel('Gx (T/mm)')
+    ax1.set_ylim([-1e-5 * 4, 1e-5 * 4])
+    ax2.plot(env.t_axis, env.k_traj)
+    ax2.set_xticks(
+        [
+            0,
+            env.t_axis[int(env.N / 2) - 1],
+            env.t_axis[int(env.N * 1.5) - 1],
+        ]
+    )
+    ax2.set_ylabel('k(t) (1/mm)')
+    ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$=' + str(env.t_axis[int(env.N * 1.5) - 1])[:5]])
+    ax1.set_xticks(
+        [
+            0,
+            env.t_axis[int(env.N / 2) - 1],
+            env.t_axis[int(env.N * 1.5) - 1],
+        ]
+    )
+    ax1.set_ylabel('k(t) (1/mm)')
+    ax1.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$=' + str(env.t_axis[int(env.N * 1.5) - 1])[:5]])
+    ax3.plot(env.x_axis, state[:int(len(state)/2)], '-o', label='real')
+    ax3.plot(env.x_axis, state[int(len(state)/2):], '-*', label='imag')
+    ax3.plot(env.x_axis, env.density, 'b-', label='object_real')
+    ax3.plot(env.x_axis, np.zeros(len(env.x_axis)), 'k-', label='object_imag')
+    ax3.legend()
+    ax4.plot(env.x_axis, env.density, '-', label='object')
+    ax4.plot(env.x_axis, np.abs(state[:int(len(state)/2)] + 1j * state[int(len(state)/2):]),
+    '-o', label='reconstruction')
+    ax1.set_title(f'mse = {info}, reward = {reward}')
+    ax4.legend()
+    ax4.set_xlabel(r'$x$')
+    ax3.set_title(r'real and image part of $\rho(x)$ ')
+    ax4.set_title(r'absolute $\rho(x)$')
+    ax3.set_ylabel(r'$\rho(x)$')
+    ax4.set_ylabel(r'$\rho(x)$')
+    plt.tight_layout()
+    plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
+    plt.close()
 
 def rotation(vectors, angle, axis):
     """Rotates m isochronism vectors (located at the origin) about axis by some angle in 3-D space. When looking down from the above aixs and angle > 0, the precession of vectors is clockwise.
@@ -105,7 +180,7 @@ def single_Relaxation(vector, m0, w, w0, t1, t2, t, axis):
     return vector_t
 
 
-def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
+def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t_axis, steps, axis):
     """relaxation process of a set of vectors in a 3-D environment. See more: Bloch Equation
 
     Parameters
@@ -136,7 +211,7 @@ def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
 
     """
     (_, num_vectors) = vectors.shape
-    delta_time = t / steps
+    # delta_time = t / steps
     assert w0.shape[0] == steps
     assert w0.shape[1] == int(num_vectors)
 
@@ -152,11 +227,11 @@ def multiple_Relaxation(vectors, m0, w, w0, t1, t2, t, steps, axis):
                     res[:, i, j],
                     m0=m0[j],
                     w=w,
-                    w0=w0[i + 1,j],
+                    w0=w0[i, j],
                     # w0=w0[j],
                     t1=t1,
                     t2=t2,
-                    t=delta_time,
+                    t=t_axis[i+1] - t_axis[i],
                     axis=axis,
                 )
             )
@@ -262,7 +337,7 @@ def density_profile_umbrella(
     # second part
     quadratic_part = (
         lambda x: 0.2 * max_rho
-        + (x - A_length * breakpoints[1]) ** 2 
+        + (x - A_length * breakpoints[1]) ** 2
         * (0.3 * max_rho)
         / ((breakpoints[1] - breakpoints[0]) * A_length) ** 2
     )
