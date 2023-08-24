@@ -238,7 +238,6 @@ def test(agent, model_path, env, num_episode, num_steps_per_ep, debug=False, sav
         recommended_action.append(best_info)
         if debug: 
             print(f'episode {i}, episode reward: {np.sum(episode_reward)}')
-        test_records.append(episode_reward)
     np.savetxt(f'{model_path}_recommended_action.txt', recommended_action, delimiter=',')
 
     if save:
@@ -262,16 +261,11 @@ def main():
     if not os.path.exists(f'src/Training/{datetime_string}'):
         os.makedirs(f'src/Training/{datetime_string}')
     path = f'src/Training/{datetime_string}/'
-    # path = 'src/Training/8-13-18-30/'
 
     args = parse_arguments()
-    env = Env(args=args, plot=False)
+    env = Env(args=args)
     agent = DDPG(env=env, args=args)
-    env.make(args=args)
-    train(agent=agent, env=env, num_episode=args.num_episode, num_steps_per_ep=args.num_steps_per_ep, args=args, path=path, plot=True, save=True, debug=True)
-    
-    model_path = f'{path}_e{args.num_episode}_s{args.num_steps_per_ep}'
-    test(agent=agent, model_path=model_path, env=env, debug=True, save=True, num_episode=args.num_episode_testing, num_steps_per_ep=args.num_steps_per_ep_testing)
+    train(agent=agent, env=env, num_episode=args.num_episode, num_steps_per_ep=args.num_steps_per_ep, args=args, path=path, plot=True, save=True, debug=True, test=True)
 
 
 if __name__ == "__main__":
