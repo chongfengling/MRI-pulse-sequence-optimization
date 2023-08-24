@@ -1,11 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from utilities import *
-import argparse
 
 class Env:
     # Environment, generates state and reward based on action
-    def __init__(self, args, plot=False):
+    def __init__(self, args):
         # create the universal environment
         # x space (spatial space)
         self.FOV_x = args.FOV_x  # field of view in x space (mm)
@@ -22,13 +21,16 @@ class Env:
         self.k_axis = np.linspace(
             -self.FOV_k / 2, self.FOV_k / 2 - self.delta_k, self.N
         )  # symmetric k space
-        self.gamma = .68e5 # rad/ms/T
+        self.gamma = 2.68e5 # rad/ms/T
         self.gamma_bar = 0.5 * self.gamma / np.pi  # ms^-1T^-1
         # t space (time space) based on G1 and G2
         # create object over x space. one env, one object
         self.density = np.zeros(len(self.x_axis))
-        # self.density[int(len(self.x_axis) * 0.4) : int(len(self.x_axis) * 0.6)] = 2
-        self.density[int(len(self.x_axis) / 4 + len(self.x_axis) / 8): int(len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8)] = 2
+        #! Object 2
+        self.density[int(len(self.x_axis) * 0.2) : int(len(self.x_axis) * 0.4)] = 1
+        self.density[int(len(self.x_axis) * 0.6) : int(len(self.x_axis) * 0.8)] = 1
+        #! Object 1
+        # self.density[int(len(self.x_axis) / 4 + len(self.x_axis) / 8): int(len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8)] = 2
         self.density_complex = self.density.astype(complex)
         # prepare for simulation
         # create spins after the rf pulse (lying on the y-axis)
@@ -39,6 +41,7 @@ class Env:
         self.vec_spins[1, :] = 1
         self.env_name = args.env
         self.T2 = args.T2
+        self.max_slew_rate = args.max_slew_rate
 
         self.t_axis = None
         self.G_values_array = None
@@ -55,7 +58,8 @@ class Env:
         # info: used to measure how mse changes before and after the step. Here is the previous mse
         (alpha, beta, GValue_01) = action
         # max gradient is 40 mT/m = 4e-5 T/mm
-        GValue = GValue_01 * 1e-5 * 40
+        GValue = GValue_01 * 4e-5
+        # positive then negative gradient lobe
         G1 = GValue * 1
         G2 = GValue * (-1)
         # calculate the delta_t and total time based on max gradient value
