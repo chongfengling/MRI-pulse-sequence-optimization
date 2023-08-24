@@ -18,31 +18,18 @@ class DDPG:
         self.actor_target = ActorNetwork(self.state_space, self.action_space, args)
         self.actor_optimizer = torch.optim.Adam(
             self.actor.parameters(), lr=self.lr_a
-        )  #!
+        )  
         # make sure the target network has the same weights as the original network
-
         hard_update(self.actor_target, self.actor)
-        # for target_param, param in zip(
-        #     self.actor.parameters(), self.actor_target.parameters()
-        # ):
-        #     target_param.data.copy_(param.data)
 
-        # create Critic Network and its target network
         self.critic = CriticNetwork(self.state_space, self.action_space, args)
         self.critic_target = CriticNetwork(self.state_space, self.action_space, args)
         self.critic_optimizer = torch.optim.Adam(
             self.critic.parameters(), lr=self.lr_c
-        )  #!
+        )  
         # make sure the target network has the same weights as the original network
 
-        # ? check
         hard_update(self.critic_target, self.critic)
-
-        # for target_param, param in zip(
-        #     self.critic.parameters(), self.critic_target.parameters()
-        # ):
-        #     target_param.data.copy_(param.data)
-
         # initialize replay buffer
         self.memory_capacity = args.memory_capacity
         self.batch_size = args.batch_size
@@ -56,7 +43,6 @@ class DDPG:
         # define hyper-parameters
         self.tau = args.tau
         self.gamma = args.gamma
-        #! self.depsilon = 1.0 / 50000
 
         self.exploration_var = args.exploration_var
         self.left_clip, self.right_clip = args.left_clip, args.right_clip
@@ -87,7 +73,6 @@ class DDPG:
 
     def store_transition(self, state, action, reward, state_, done):
         # store the transition in the replay buffer
-
         transition = np.hstack(
             (
                 state.astype(np.float32),
