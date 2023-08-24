@@ -38,9 +38,8 @@ def show_state(env, path, state, i, j, info, reward):
     _, (ax1, ax2, ax3, ax4) = plt.subplots(4, sharex=False, figsize=(10, 6))
     ax1.plot(env.t_axis, env.G_values_array)
     ax1.set_ylabel('Gx (T/mm)')
-    ax1.set_ylim([-1e-5 * 40, 1e-5 * 40])
+    ax1.set_ylim([-1e-5 * 4, 1e-5 * 4])
     ax2.plot(env.t_axis, env.k_traj)
-    # ax1.legend()
     ax2.set_xticks(
         [
             0,
@@ -48,7 +47,17 @@ def show_state(env, path, state, i, j, info, reward):
             env.t_axis[int(env.N * 1.5) - 1],
         ]
     )
-    ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$'])
+    ax2.set_ylabel('k(t) (1/mm)')
+    ax2.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$=' + str(env.t_axis[int(env.N * 1.5) - 1])[:5]])
+    ax1.set_xticks(
+        [
+            0,
+            env.t_axis[int(env.N / 2) - 1],
+            env.t_axis[int(env.N * 1.5) - 1],
+        ]
+    )
+    ax1.set_ylabel('k(t) (1/mm)')
+    ax1.set_xticklabels(['$t_1$', r'$t_2 (t_3)$', r'$t_4$=' + str(env.t_axis[int(env.N * 1.5) - 1])[:5]])
     ax3.plot(env.x_axis, state[:int(len(state)/2)], '-o', label='real')
     ax3.plot(env.x_axis, state[int(len(state)/2):], '-*', label='imag')
     ax3.plot(env.x_axis, env.density, 'b-', label='object_real')
@@ -57,8 +66,14 @@ def show_state(env, path, state, i, j, info, reward):
     ax4.plot(env.x_axis, env.density, '-', label='object')
     ax4.plot(env.x_axis, np.abs(state[:int(len(state)/2)] + 1j * state[int(len(state)/2):]),
     '-o', label='reconstruction')
-    ax1.set_title(f'i_{i}_j_{j}_mse = {info}, reward = {reward}')
+    ax1.set_title(f'mse = {info}, reward = {reward}')
     ax4.legend()
+    ax4.set_xlabel(r'$x$')
+    ax3.set_title(r'real and image part of $\rho(x)$ ')
+    ax4.set_title(r'absolute $\rho(x)$')
+    ax3.set_ylabel(r'$\rho(x)$')
+    ax4.set_ylabel(r'$\rho(x)$')
+    plt.tight_layout()
     plt.savefig(path + f'i_{i}_j_{j}.png', dpi=300) 
     plt.close()
 
