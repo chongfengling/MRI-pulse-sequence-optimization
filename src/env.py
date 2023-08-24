@@ -70,8 +70,9 @@ class Env:
         # define gradient values over time
         G_values_array = np.zeros(len(self.t_axis))
 
-        N_G1 = nearest_even(alpha * self.N * 0.5)
-        N_G2 = nearest_even(beta * self.N)
+        # 0.8 is the ratio of the first gradient lobe introduced by slew rate
+        N_G1 = nearest_even(alpha * self.N * 0.5 * 0.8) # 0.8 is the ratio of the first gradient lobe introduced by slew rate
+        N_G2 = nearest_even(beta * self.N * 0.8)
         N_G1_up = int(0.5 * (self.N * 0.5 - N_G1))
         N_G2_up = int(0.5 * (self.N - N_G2))
         assert N_G1 + N_G2 + N_G1_up * 2 + N_G2_up * 2 == self.N * 1.5
