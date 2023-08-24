@@ -29,6 +29,12 @@ def parse_arguments():
         type=float,
         help='max slew rate of gradient in (T / (m * ms)), defined as peak amplitude of gradient divided by rise time',
     )
+    parser.add_argument(
+        '--constraint_slew_rate',
+        default=0.8,
+        type=float,
+        help='constraint on slew rate of gradient. limits the percentage of the duration of two constant gradients'
+    )
     parser.add_argument('--seed', default=215, type=int, help='seed')
     parser.add_argument(
         '--state_space',

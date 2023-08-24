@@ -26,11 +26,14 @@ class Env:
         # t space (time space) based on G1 and G2
         # create object over x space. one env, one object
         self.density = np.zeros(len(self.x_axis))
+
         #! Object 2
         self.density[int(len(self.x_axis) * 0.2) : int(len(self.x_axis) * 0.4)] = 1
         self.density[int(len(self.x_axis) * 0.6) : int(len(self.x_axis) * 0.8)] = 1
+
         #! Object 1
         # self.density[int(len(self.x_axis) / 4 + len(self.x_axis) / 8): int(len(self.x_axis) / 4 * 3 - len(self.x_axis) / 8)] = 2
+        
         self.density_complex = self.density.astype(complex)
         # prepare for simulation
         # create spins after the rf pulse (lying on the y-axis)
@@ -41,7 +44,8 @@ class Env:
         self.vec_spins[1, :] = 1
         self.env_name = args.env
         self.T2 = args.T2
-        self.max_slew_rate = args.max_slew_rate
+        # self.max_slew_rate = args.max_slew_rate
+        self.constraint_slew_rate = args.constraint_slew_rate
 
         self.t_axis = None
         self.G_values_array = None
@@ -50,7 +54,7 @@ class Env:
     def reset(self, test=False):
         # reset and return a new state (reconstructed density with two components: real and imaginary)
         if test:
-            return np.ones(len(self.x_axis) * 2) * -1
+            return np.ones(len(self.x_axis) * 2) * 0 
         else:
             return np.random.rand(len(self.x_axis) * 2)
 
@@ -75,8 +79,8 @@ class Env:
         G_values_array = np.zeros(len(self.t_axis))
 
         # 0.8 is the ratio of the first gradient lobe introduced by slew rate
-        N_G1 = nearest_even(alpha * self.N * 0.5 * 0.8) # 0.8 is the ratio of the first gradient lobe introduced by slew rate
-        N_G2 = nearest_even(beta * self.N * 0.8)
+        N_G1 = nearest_even(alpha * self.N * 0.5 * self.constraint_slew_rate)
+        N_G2 = nearest_even(beta * self.N * self.constraint_slew_rate)
         N_G1_up = int(0.5 * (self.N * 0.5 - N_G1))
         N_G2_up = int(0.5 * (self.N - N_G2))
         assert N_G1 + N_G2 + N_G1_up * 2 + N_G2_up * 2 == self.N * 1.5
@@ -86,7 +90,6 @@ class Env:
         G_values_array[N_G1_up + N_G1 : N_G1_up + N_G1 + N_G1_up] = np.linspace(
             G1, 0, N_G1_up
         )
-
         G_values_array[
             N_G1_up + N_G1 + N_G1_up : N_G1_up + N_G1 + N_G1_up + N_G2_up
         ] = np.linspace(0, G2, N_G2_up)

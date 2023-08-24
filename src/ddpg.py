@@ -28,7 +28,6 @@ class DDPG:
             self.critic.parameters(), lr=self.lr_c
         )  
         # make sure the target network has the same weights as the original network
-
         hard_update(self.critic_target, self.critic)
         # initialize replay buffer
         self.memory_capacity = args.memory_capacity
@@ -66,7 +65,6 @@ class DDPG:
                 self.left_clip,
                 self.right_clip,
             )
-            action[:8] = np.exp(action[:8]) / np.sum(np.exp(action[:8]), axis=0)
 
         self.s_t = action
         return action
@@ -110,7 +108,6 @@ class DDPG:
             batch_state_, self.actor_target(batch_state_)
         )
 
-        # if game is over (done = 0.0), no value for the next state's Q-value
         # y is the target Q-value
         y = batch_reward + self.gamma * to_numpy(q_target_batch) * batch_done
         # calculate the current Q-value
