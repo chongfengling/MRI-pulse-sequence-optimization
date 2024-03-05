@@ -1,5 +1,7 @@
 # Optimization of MRI Pulse Sequence by Reinforcement Learning.
 
+This repository contains the code and report for my master thesis *Optimization of MRI Pulse Sequence by Reinforcement Learning*. This project focus on the optimization of gradient-echo sequences for 1-D objects using the Deep Deterministic Policy Gradient (DDPG) algorithm under constraints on gradient slew rate.
+
 ## Dependencies
 ```
 pip install -r requirements.txt
