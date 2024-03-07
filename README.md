@@ -2,6 +2,21 @@
 
 This repository contains the code and report for my master thesis *Optimization of MRI Pulse Sequence by Reinforcement Learning*. This project focus on the optimization of gradient-echo sequences for 1-D objects using the Deep Deterministic Policy Gradient (DDPG) algorithm under constraints on gradient slew rate.
 
+<div style="text-align:center;">
+  <img src="thesis/assets/pulse_sequence.svg" alt="Space" width="400">
+  <p><em>A 1D imaging protocol for a gradient echo sequence structure.</em></p>
+</div>
+
+<div style="text-align:center;">
+  <img src="thesis/assets/GEGame.svg" alt="Space" width="600">
+  <p><em>Schematic of the DDPG framework.</em></p>
+</div>
+
+<div style="text-align:center;">
+  <img src="thesis/assets/res_obj1.png" alt="Space" width="900">
+  <p><em>Actions and corresponding error in testing episodes for 1-D object.</em></p>
+</div>
+
 ## Dependencies
 ```
 pip install -r requirements.txt
